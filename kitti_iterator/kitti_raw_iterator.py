@@ -1,9 +1,6 @@
-from operator import index
 import os
-from turtle import shape
 import yaml
 import numpy as np
-import time
 
 from torch.multiprocessing import Process, Queue, set_start_method
 
