@@ -2,6 +2,7 @@ import os
 import yaml
 import numpy as np
 
+from torch.utils.data import Dataset
 from torch.multiprocessing import Process, Queue, set_start_method
 
 import cv2
@@ -35,7 +36,7 @@ def open_calib(calib_file):
             pass
     return data
 
-class KittiRaw:
+class KittiRaw(Dataset):
 
     def __init__(self, 
         kitti_raw_base_path="kitti_raw_mini",
