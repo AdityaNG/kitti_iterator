@@ -10,7 +10,12 @@ def test_kitti_raw():
     )
     for row in raw_iter:
         assert len(row) == 6
-        image_00, image_01, image_02, image_03, velodyine_points, occupancy_grid = row
+        image_00 = row['image_00']
+        image_01 = row['image_01']
+        image_02 = row['image_02']
+        image_03 = row['image_03']
+        velodyine_points = row['velodyine_points']
+        occupancy_grid = row['occupancy_grid']
         assert type(image_00) == np.ndarray
         assert type(image_01) == np.ndarray
         assert type(image_02) == np.ndarray
