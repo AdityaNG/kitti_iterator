@@ -42,13 +42,15 @@ class KittiRaw(Dataset):
         kitti_raw_base_path="kitti_raw_mini",
         date_folder="2011_09_26",
         sub_folder="2011_09_26_drive_0001_sync",
-        transform=dict()
+        transform=dict(),
+        grid_size = (200.0, 200.0, 10.0),
+        scale = 2.0
     ) -> None:
         self.transform = transform
         self.plot3d = True
         self.plot2d = False
-        self.scale = 2.0
-        self.grid_size = (200.0, 200.0, 10.0)
+        self.scale = scale
+        self.grid_size = grid_size
         self.occupancy_shape = list(map(lambda i: int(i*self.scale), self.grid_size))
         self.occupancy_mask_2d_shape = list(map(lambda i: int(i*self.scale), self.grid_size[:2]))
         self.grid_x, self.grid_y, self.grid_z = list(map(lambda i: i//2, self.grid_size))
@@ -106,6 +108,64 @@ class KittiRaw(Dataset):
         self.index += 1
         return data
 
+    def transform_occupancy_grid_to_points(self, occupancy_grid):
+        assert occupancy_grid.shape == self.occupancy_shape
+        final_points = []
+        for i in range(occupancy_grid.shape[0]):
+            for j in range(occupancy_grid.shape[1]):
+                for k in range(occupancy_grid.shape[2]):
+                    x,y,z = [
+                        # (i - occ_x/2) * grid_x / (occ_x/2),
+                        (i) * self.grid_x / (self.occ_x/2),
+                        (j - self.occ_y/2) * self.grid_y / (self.occ_y/2),
+                        (k - self.occ_z/2) * self.grid_z / (self.occ_z/2)
+                    ]
+                    if occupancy_grid[i,j,k] == 1.0:
+                        final_points.append((x,y,z))
+        final_points = np.array(final_points, dtype=np.float32)
+        return final_points
+
+    def transform_points_to_occupancy_grid(self, velodyine_points):
+        occupancy_grid = np.zeros(self.occupancy_shape, dtype=np.float32)
+        occupancy_mask_2d = np.zeros(self.occupancy_mask_2d_shape, dtype=np.uint8)
+        x, y, w, h = self.roi
+
+        min_height = float('inf')
+        max_height = -float('inf')
+        for p in velodyine_points:
+            p3d = np.array([
+                p[0], p[1], p[2]
+            ]).reshape((3,1))
+            p3d = p3d - self.T
+            p3d = self.R @ p3d
+            p4d = np.ones((4,1))
+            p4d[:3,:] = p3d
+            p2d = self.intrinsic_mat @ p4d
+            if p2d[2][0]!=0:
+                img_x, img_y = p2d[0][0]//p2d[2][0], p2d[1][0]//p2d[2][0]
+                
+                if (0 <= img_x < w and 0 <= img_y < h and p3d[2]>0) and 0<p[0]<self.grid_x and -self.grid_y<p[1]<self.grid_y and -self.grid_z<p[2]<self.grid_z:                    
+                    i, j, k = [
+                        # int((p[0]*self.occ_x//2)//self.grid_x + self.occ_x//2),
+                        int((p[0]*self.occ_x//2)//self.grid_x)*2,
+                        int((p[1]*self.occ_y//2)//self.grid_y + self.occ_y//2),
+                        # int((p[1]*self.occ_y//2)//self.grid_y),
+                        int((p[2]*self.occ_z//2)//self.grid_z + self.occ_z//2)
+                    ]
+                    occupancy_grid[i,j,k] = 1.0
+                    # occupancy_mask_2d[i,j] = int(min(255, 255*max(0, (k-6)/(15-6))))
+                    occupancy_mask_2d[i,j] = max(int(min(255, 255*max(0, (k-6)/(15-6)))), occupancy_mask_2d[i,j])
+
+                    min_height = min(min_height, k)
+                    max_height = max(max_height, k)
+        
+        occupancy_mask_2d = cv2.flip(occupancy_mask_2d, 0)
+        return {
+            'occupancy_grid': occupancy_grid, 
+            'occupancy_mask_2d': occupancy_mask_2d
+        }
+
+
     def __getitem__(self, index):
         id = self.img_list[index]
         image_00 = os.path.join(self.image_00_path, 'data', id + ".png")
@@ -132,47 +192,7 @@ class KittiRaw(Dataset):
         velodyine_points = np.fromfile(velodyine_points, dtype=np.float32)
         velodyine_points = np.reshape(velodyine_points, (velodyine_points.shape[0]//4, 4))
         
-        occupancy_grid = np.zeros(self.occupancy_shape, dtype=np.float32)
-        occupancy_mask_2d = np.zeros(self.occupancy_mask_2d_shape, dtype=np.uint8)
-        
-        # Goes from -13 to +3
-        # for i in range(3):
-        #     print(min(velodyine_points[:,i]), max(velodyine_points[:,i]))
-        # print("*"*10)
-        
-        floor_height = 3.0
-        min_height = float('inf')
-        max_height = -float('inf')
-        for p in velodyine_points:
-            p3d = np.array([
-                p[0], p[1], p[2]
-            ]).reshape((3,1))
-            p3d = p3d - self.T
-            p3d = self.R @ p3d
-            p4d = np.ones((4,1))
-            p4d[:3,:] = p3d
-            p2d = self.intrinsic_mat @ p4d
-            if p2d[2][0]!=0:
-                img_x, img_y = p2d[0][0]//p2d[2][0], p2d[1][0]//p2d[2][0]
-                
-                if (0 <= img_x < w and 0 <= img_y < h and p3d[2]>0) and 0<p[0]<self.grid_x and -self.grid_y<p[1]<self.grid_y and -self.grid_z<p[2]<self.grid_z:
-                    if plot2d:
-                        image_02 = cv2.circle(image_02, (int(img_x), int(img_y)), 1, (0,255,0), -1)
-                    i, j, k = [
-                        # int((p[0]*self.occ_x//2)//self.grid_x + self.occ_x//2),
-                        int((p[0]*self.occ_x//2)//self.grid_x)*2,
-                        int((p[1]*self.occ_y//2)//self.grid_y + self.occ_y//2),
-                        # int((p[1]*self.occ_y//2)//self.grid_y),
-                        int((p[2]*self.occ_z//2)//self.grid_z + self.occ_z//2)
-                    ]
-                    occupancy_grid[i,j,k] = 1.0
-                    # occupancy_mask_2d[i,j] = int(min(255, 255*max(0, (k-6)/(15-6))))
-                    occupancy_mask_2d[i,j] = max(int(min(255, 255*max(0, (k-6)/(15-6)))), occupancy_mask_2d[i,j])
-
-                    min_height = min(min_height, k)
-                    max_height = max(max_height, k)
-        
-        occupancy_mask_2d = cv2.flip(occupancy_mask_2d, 0)
+        occupancy_grid_data = self.transform_points_to_occupancy_grid(velodyine_points)
 
         data = {
             'image_00': image_00, 
@@ -180,8 +200,8 @@ class KittiRaw(Dataset):
             'image_02': image_02, 
             'image_03': image_03, 
             'velodyine_points': velodyine_points, 
-            'occupancy_grid': occupancy_grid,
-            'occupancy_mask_2d': occupancy_mask_2d
+            'occupancy_grid': occupancy_grid_data['occupancy_grid'],
+            'occupancy_mask_2d': occupancy_grid_data['occupancy_mask_2d']
         }
         for key in self.transform:
             data[key] = self.transform[key](data[key])

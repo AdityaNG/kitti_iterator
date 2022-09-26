@@ -9,7 +9,7 @@ def test_kitti_raw():
         sub_folder="2011_09_26_drive_0001_sync"
     )
     for row in raw_iter:
-        assert len(row) == 6
+        assert len(row) == 7
         image_00 = row['image_00']
         image_01 = row['image_01']
         image_02 = row['image_02']
