@@ -49,13 +49,14 @@ def gaus_blur_3D(data, sigma = 1.0, n=5, device = device):
     xx, yy, zz = np.meshgrid(x,y,z)
     kernel = np.exp(-(xx**2 + yy**2 + zz**2)/(2*sigma**2))
 
-    kernel = torch.tensor(kernel).unsqueeze(0).unsqueeze(0).to(device=device, dtype=torch.float32)
-    data = torch.tensor(data).unsqueeze(0).to(device=device, dtype=torch.float32)
+    with torch.no_grad():
+        kernel = torch.tensor(kernel).unsqueeze(0).unsqueeze(0).to(device=device, dtype=torch.float32)
+        data = torch.tensor(data).unsqueeze(0).to(device=device, dtype=torch.float32)
 
-    filtered = torch.nn.functional.conv3d(data, kernel, stride=1, padding=n)
+        filtered = torch.nn.functional.conv3d(data, kernel, stride=1, padding=n)
 
-    # return filtered.cpu().detach().squeeze().numpy()
-    return filtered.cpu().detach().numpy()
+        # return filtered.cpu().detach().squeeze().numpy()
+        return filtered.cpu().detach().numpy()
 
 def gaus_blur_3D_cpu(data, sigma = 1.0, n=5):
     # first build the smoothing kernel
