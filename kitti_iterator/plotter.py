@@ -31,31 +31,35 @@ calculated = False
 
 
 def update_graph():
-	global graph_region, POINTS, MESHES, point_cloud_array, mesh_region
-	global min_height, max_height, colors, calculated, max_dist, min_dist, dist_range
-	
-	if not point_cloud_array.empty():
-		DATA = point_cloud_array.get()
-		POINTS = DATA['POINTS']
-		MESHES = DATA['MESHES']
-	
-	#POINTS = [(0,0,1), ]
-	colors = np.ones(shape=(len(POINTS), 3), dtype=np.uint8)
-	if len(POINTS)>0:
-		POINTS = np.array(POINTS)
-		#POINTS_scaled = POINTS / 10000.0
-		POINTS_scaled = POINTS
-		#print(POINTS)
-		graph_region.setData(pos=POINTS_scaled, color=colors)
-		#graph_region.setData(pos=POINTS)
+    global graph_region, POINTS, MESHES, point_cloud_array, mesh_region
+    global min_height, max_height, colors, calculated, max_dist, min_dist, dist_range
+    global app
+    
+    try:
+        if not point_cloud_array.empty():
+            DATA = point_cloud_array.get()
+            POINTS = DATA['POINTS']
+            MESHES = DATA['MESHES']
+        
+        #POINTS = [(0,0,1), ]
+        colors = np.ones(shape=(len(POINTS), 3), dtype=np.uint8)
+        if len(POINTS)>0:
+            POINTS = np.array(POINTS)
+            #POINTS_scaled = POINTS / 10000.0
+            POINTS_scaled = POINTS
+            #print(POINTS)
+            graph_region.setData(pos=POINTS_scaled, color=colors)
+            #graph_region.setData(pos=POINTS)
 
-	if 'vertexes' in MESHES and len(MESHES['vertexes'])>0:
-		mesh_region.setMeshData(
-			vertexes=MESHES['vertexes'], 
-			faces=MESHES['faces'], 
-			#vertexColors=MESHES['vertexColors'], 
-			faceColors=MESHES['faceColors']
-		)
+        if 'vertexes' in MESHES and len(MESHES['vertexes'])>0:
+            mesh_region.setMeshData(
+                vertexes=MESHES['vertexes'], 
+                faces=MESHES['faces'], 
+                #vertexColors=MESHES['vertexColors'], 
+                faceColors=MESHES['faceColors']
+            )
+    except KeyboardInterrupt:
+        app.closeAllWindows()
 
 
 def start_graph(points_q):
