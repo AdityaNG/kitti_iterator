@@ -10,10 +10,12 @@ import torch
 import cv2
 import itertools
 
+from .helper import *
+
 # Sensor Setup: https://www.cvlibs.net/datasets/kitti/setup.php
 
-plot3d = True
-plot2d = False
+plot3d = False
+plot2d = True
 point_cloud_array = None
 if __name__ == '__main__':
     if plot3d:
@@ -119,18 +121,26 @@ class KittiRaw(Dataset):
         self.K_00 = np.reshape(self.calib_cam_to_cam['K_00'], (3,3))
         self.S_00 = np.reshape(self.calib_cam_to_cam['S_00'], (1,2))
         self.D_00 = np.reshape(self.calib_cam_to_cam['D_00'], (1,5))
+        self.R_00 = np.reshape(self.calib_cam_to_cam['R_00'], (3,3))
+        self.T_00 = np.reshape(self.calib_cam_to_cam['T_00'], (3,1))
 
         self.K_01 = np.reshape(self.calib_cam_to_cam['K_01'], (3,3))
         self.S_01 = np.reshape(self.calib_cam_to_cam['S_01'], (1,2))
         self.D_01 = np.reshape(self.calib_cam_to_cam['D_01'], (1,5))
+        self.R_01 = np.reshape(self.calib_cam_to_cam['R_01'], (3,3))
+        self.T_01 = np.reshape(self.calib_cam_to_cam['T_01'], (3,1))
 
         self.K_02 = np.reshape(self.calib_cam_to_cam['K_02'], (3,3))
         self.S_02 = np.reshape(self.calib_cam_to_cam['S_02'], (1,2))
         self.D_02 = np.reshape(self.calib_cam_to_cam['D_02'], (1,5))
+        self.R_02 = np.reshape(self.calib_cam_to_cam['R_02'], (3,3))
+        self.T_02 = np.reshape(self.calib_cam_to_cam['T_02'], (3,1))
 
         self.K_03 = np.reshape(self.calib_cam_to_cam['K_03'], (3,3))
         self.S_03 = np.reshape(self.calib_cam_to_cam['S_03'], (1,2))
         self.D_03 = np.reshape(self.calib_cam_to_cam['D_03'], (1,5))
+        self.R_03 = np.reshape(self.calib_cam_to_cam['R_03'], (3,3))
+        self.T_03 = np.reshape(self.calib_cam_to_cam['T_03'], (3,1))
 
         self.w, self.h = list(map(int, (self.S_00[0][0], self.S_00[0][1])))
         self.new_K_00, self.roi_00 = cv2.getOptimalNewCameraMatrix(self.K_00, self.D_00, (self.w, self.h), 1, (self.w, self.h))
@@ -209,17 +219,21 @@ class KittiRaw(Dataset):
 
         # np.array([f(xi) for xi in x])
         final_points = np.array([f(xi) for xi in itertools.product(
-            range(0, occupancy_grid.shape[0],skip),
-            range(0, occupancy_grid.shape[1],skip),
-            range(0, occupancy_grid.shape[2],skip)
+            range(0, occupancy_grid.shape[0], skip),
+            range(0, occupancy_grid.shape[1], skip),
+            range(0, occupancy_grid.shape[2], skip)
         )])
         # final_points = np.fromfunction(lambda xi: f(xi), np.indices(occupancy_grid.shape))
+
+        final_points = final_points[np.logical_not(
+            np.logical_and(final_points[:,0] == 0, final_points[:,1] == 0, final_points[:,2] == 0,)
+        )]
 
         # final_points = final_points.cpu().detach().numpy()
         final_points = np.array(final_points, dtype=np.float32)
         return final_points
 
-    def transform_points_to_image_space(self, velodyine_points, image_points, roi, intrinsic_mat):
+    def transform_points_to_image_space(self, velodyine_points, roi, intrinsic_mat, R_cam, T_cam, P_rect):
         x, y, w, h = roi
         intrinsic_mat = intrinsic_mat
         intrinsic_mat = np.vstack((
@@ -231,37 +245,103 @@ class KittiRaw(Dataset):
 
         # image_points = cv2.resize(image_points, (w, h))
         image_points = np.zeros((h,w,3))
-        for p in velodyine_points:
-            p3d = np.array([
-                p[0], p[1], p[2]
-            ]).reshape((3,1))
-            p3d = p3d - self.T
-            p3d = self.R @ p3d
-            # p3d = np.linalg.inv(self.R) @ p3d
-            p4d = np.ones((4,1))
-            p4d[:3,:] = p3d
-            p2d = intrinsic_mat @ p4d
-            if p2d[2][0]!=0:
-                img_x, img_y = p2d[0][0]//p2d[2][0], p2d[1][0]//p2d[2][0]
-                
-                # if (0 <= img_x < w and 0 <= img_y < h and p3d[2]>0):
-                # if (0 <= img_x < w and 0 <= img_y < h and p3d[1]>0):
-                if (0 <= img_x < w and 0 <= img_y < h and p[2]<0):
-                    i, j, k = [
-                        # int((p[0]*self.occ_x//2)//self.grid_x + self.occ_x//2),
-                        int((p[0]*self.occ_x//2)//self.grid_x)*2,
-                        int((p[1]*self.occ_y//2)//self.grid_y + self.occ_y//2),
-                        # int((p[1]*self.occ_y//2)//self.grid_y),
-                        int((p[2]*self.occ_z//2)//self.grid_z + self.occ_z//2)
-                    ]
-
-                    # image_points[int(img_y),int(img_x)] = p[2]
-                    image_points[int(img_y),int(img_x),:] = p[2]
-                    
+        
+        ans, color = velo3d_2_camera2d_points(velodyine_points, self.R, self.T, P_rect, v_fov=(-24.9, 2.0), h_fov=(-45,45))
+        
+        for index in range(len(ans[0])):
+            img_x, img_y = [ans[0][index], ans[1][index]]
+            if (0 <= img_x < w and 0 <= img_y < h):
+                image_points[int(img_y),int(img_x),:] = color[index]
+        
         return image_points
-        pass
+
+    def transform_occupancy_grid_to_image_space(self, occupancuy_grid, roi, intrinsic_mat, R_cam, T_cam, P_rect):
+        pc = self.transform_occupancy_grid_to_points(occupancuy_grid, threshold=0.0, skip=1)
+        image_points = self.transform_points_to_image_space(pc, roi, intrinsic_mat, R_cam, T_cam, P_rect)
+        return image_points
+        
 
     def transform_points_to_occupancy_grid(self, velodyine_points):
+        occupancy_grid = np.zeros(self.occupancy_shape, dtype=np.float32)
+        occupancy_mask_2d = np.zeros(self.occupancy_mask_2d_shape, dtype=np.uint8)
+        x, y, w, h = self.roi_02
+
+        P_rect = self.calib_cam_to_cam['P_rect_02'].reshape(3, 4)[:3,:3]
+
+        # ans, color = velo3d_2_camera2d_points(velodyine_points, self.R, self.T, P_rect, v_fov=(-24.9, 2.0), h_fov=(-45,45))
+        v_fov=(-24.9, 2.0)
+        h_fov=(-45,45)
+        velodyine_points, c_ = velo_points_filter(velodyine_points, v_fov, h_fov)
+        velodyine_points_orig = velodyine_points.copy()
+
+        RT_ = np.concatenate((self.R, self.T),axis = 1)
+    
+        # convert velodyne coordinates(X_v, Y_v, Z_v) to camera coordinates(X_c, Y_c, Z_c) 
+        for i in range(velodyine_points.shape[1]):
+            velodyine_points[:3,i] = np.matmul(RT_, velodyine_points[:,i])
+
+        velodyine_points = np.delete(velodyine_points, 3, axis=0)
+        image_points = velodyine_points.copy()
+        # print(image_points.shape, velodyine_points.shape)
+        # convert camera coordinates(X_c, Y_c, Z_c) image(pixel) coordinates(x,y) 
+        for i in range(image_points.shape[1]):
+            image_points[:,i] = np.matmul(P_rect, image_points[:,i])
+
+        image_points = image_points[::]/image_points[::][2]
+        image_points = np.delete(image_points, 2, axis=0)
+        # print(image_points.shape, velodyine_points.shape)
+
+        for index in range(image_points.shape[1]):
+            img_x, img_y = image_points[:, index]
+            x, y, z = velodyine_points[:, index]
+
+            # x, y, z = x, z, y # Half
+            # x, y, z = y, x, z # N
+            # x, y, z = y, z, x # N
+            x, y, z = z, x, -y # Inverted
+            # x, y, z = z, y, x
+
+            xv, yv, zv = velodyine_points_orig[:3, index]
+            i, j, k = [
+                # int((p[0]*self.occ_x//2)//self.grid_x + self.occ_x//2),
+                int((x*self.occ_x//2)//self.grid_x)*2,
+                int((y*self.occ_y//2)//self.grid_y + self.occ_y//2),
+                # int((p[1]*self.occ_y//2)//self.grid_y),
+                int((z*self.occ_z//2)//self.grid_z + self.occ_z//2)
+            ]
+
+            # if (
+            #     0 < i < self.occupancy_shape[0] and
+            #     0 < j < self.occupancy_shape[1] and
+            #     0 < k < self.occupancy_shape[2]
+            # ):
+            if (
+                (0 <= img_x < w and 0 <= img_y < h) and
+                0 < i < self.occupancy_shape[0] and
+                0 < j < self.occupancy_shape[1] and
+                0 < k < self.occupancy_shape[2]
+                # 0 < xv < self.grid_x and 
+                # -self.grid_y < yv < self.grid_y and 
+                # -self.grid_z < zv < self.grid_z
+            ):
+                occupancy_grid[i,j,k] = 1.0
+                # occupancy_mask_2d[i,j] = int(min(255, 255*max(0, (k-6)/(15-6))))
+                occupancy_mask_2d[i,j] = max(int(min(255, 255*max(0, (k-6)/(15-6)))), occupancy_mask_2d[i,j])
+
+        
+        velodyine_points_camera = []
+        for index in range(velodyine_points.shape[1]):
+            velodyine_points_camera.append(velodyine_points[:,index])
+        
+        velodyine_points_camera = np.array(velodyine_points_camera, dtype=np.float32)
+
+        return {
+            'occupancy_grid': occupancy_grid, 
+            'occupancy_mask_2d': occupancy_mask_2d,
+            'velodyine_points_camera': velodyine_points_camera
+        }
+    
+    def transform_points_to_occupancy_grid_OLD(self, velodyine_points):
         occupancy_grid = np.zeros(self.occupancy_shape, dtype=np.float32)
         occupancy_mask_2d = np.zeros(self.occupancy_mask_2d_shape, dtype=np.uint8)
         x, y, w, h = self.roi_02
@@ -341,8 +421,9 @@ class KittiRaw(Dataset):
         image_03 = image_03[y:y+h, x:x+w]
 
 
-        velodyine_points = np.fromfile(velodyine_points, dtype=np.float32)
-        velodyine_points = np.reshape(velodyine_points, (velodyine_points.shape[0]//4, 4))
+        # velodyine_points = np.fromfile(velodyine_points, dtype=np.float32)
+        # velodyine_points = np.reshape(velodyine_points, (velodyine_points.shape[0]//4, 4))
+        velodyine_points = np.fromfile(velodyine_points, dtype=np.float32).reshape(-1, 4)[:,:3]
         
         occupancy_grid_data = self.transform_points_to_occupancy_grid(velodyine_points)
 
@@ -363,9 +444,25 @@ class KittiRaw(Dataset):
             'K_01': self.K_01,
             'K_02': self.K_02,
             'K_03': self.K_03,
+            
+            'R_00': self.R_00,
+            'R_01': self.R_01,
+            'R_02': self.R_02,
+            'R_03': self.R_03,
+
+            'T_00': self.T_00,
+            'T_01': self.T_01,
+            'T_02': self.T_02,
+            'T_03': self.T_03,
+
+            'calib_cam_to_cam': self.calib_cam_to_cam,
+            'calib_imu_to_velo': self.calib_imu_to_velo,
+            'calib_velo_to_cam': self.calib_velo_to_cam,
+
             'velodyine_points': velodyine_points, 
             'occupancy_grid': occupancy_grid_data['occupancy_grid'],
-            'occupancy_mask_2d': occupancy_grid_data['occupancy_mask_2d']
+            'occupancy_mask_2d': occupancy_grid_data['occupancy_mask_2d'],
+            'velodyine_points_camera': occupancy_grid_data['velodyine_points_camera']
         }
         for key in self.transform:
             data[key] = self.transform[key](data[key])
@@ -374,21 +471,22 @@ class KittiRaw(Dataset):
 
 def main(point_cloud_array=point_cloud_array):
     # k_raw = KittiRaw()
+    # k_raw = KittiRaw(
+    #     # kitti_raw_base_path="kitti_raw_mini",
+    #     # date_folder="2011_09_26",
+    #     # sub_folder="2011_09_26_drive_0001_sync",
+    #     grid_size = (100.0, 50.0, 5),
+    #     scale = 2.24 * 2,
+    #     sigma = 5.0,
+    #     # sigma = None,
+    #     gaus_n=5
+    # )
     k_raw = KittiRaw(
-        # kitti_raw_base_path="kitti_raw_mini",
+        # kitti_raw_base_path="/home/aditya/Datasets/kitti/raw/",
+        kitti_raw_base_path=os.path.expanduser("~/Datasets/kitti/raw/"),
         # date_folder="2011_09_26",
         # sub_folder="2011_09_26_drive_0001_sync",
-        grid_size = (100.0, 50.0, 5),
-        scale = 2.24 * 2,
-        sigma = 5.0,
-        # sigma = None,
-        gaus_n=5
-    )
-    k_raw = KittiRaw(
-        # kitti_raw_base_path="kitti_raw_mini",
-        # date_folder="2011_09_26",
-        # sub_folder="2011_09_26_drive_0001_sync",
-        grid_size = (100.0, 100.0, 5),
+        grid_size = (100.0, 100.0, 50),
         scale = 2.24 * 2,
         sigma = 5.0,
         # sigma = None,
@@ -399,16 +497,27 @@ def main(point_cloud_array=point_cloud_array):
         data = k_raw[index]
         image_02 = data['image_02']
         velodyine_points = data['velodyine_points']
+        velodyine_points_camera = data['velodyine_points_camera']
         occupancy_mask_2d = data['occupancy_mask_2d']
         occupancy_grid  = data['occupancy_grid']
         img_id = '_00'
         roi = data['roi'+img_id]
+        R_cam = data['R'+img_id]
+        T_cam = data['T'+img_id]
+
+        calib_cam_to_cam = data['calib_cam_to_cam']
+        calib_imu_to_velo = data['calib_imu_to_velo']
+        calib_velo_to_cam = data['calib_velo_to_cam']
+
+        P_rect = calib_cam_to_cam['P_rect' + img_id].reshape(3, 4)[:3,:3]
+
+        
         x, y, w, h = roi
         # img_input = data['image'+img_id+'_raw']
         img_input = data['image'+img_id]
         img_input = cv2.resize(img_input, (w, h))
-        image_points = k_raw.transform_points_to_image_space(velodyine_points, data['image'+img_id], roi, data['K'+img_id])
-        print(img_input.shape, image_points.shape)
+        # image_points = k_raw.transform_points_to_image_space(velodyine_points, data['image'+img_id], roi, data['K'+img_id], R_cam, T_cam, P_rect)
+        image_points = k_raw.transform_points_to_image_space(velodyine_points, roi, data['K'+img_id], R_cam, T_cam, P_rect)
         image_points = cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
         image_points = cv2.addWeighted(image_points, 0.5, img_input, 0.1, 0.0)
         if plot2d:
@@ -416,19 +525,27 @@ def main(point_cloud_array=point_cloud_array):
             # cv2.imshow('image_points', cv2.normalize(image_points - np.min(image_points.flatten()), None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1))
             # cv2.imshow('image_points', cv2.normalize(image_points, None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1))
             # cv2.imshow('image_points', cv2.normalize(image_points - np.min(image_points.flatten()), None, 255, 0, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U))
-            cv2.imshow('image_points', cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U))
+            # cv2.imshow('image_points', cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U))
+            image_points_grid = k_raw.transform_occupancy_grid_to_image_space(occupancy_grid, roi, data['K'+img_id], R_cam, T_cam, P_rect)
             cv2.imshow('image_points', image_points - np.min(image_points.flatten()))
+            cv2.imshow('image_points_grid', image_points_grid - np.min(image_points_grid.flatten()))
+
             # cv2.imshow('occupancy_mask_2d', occupancy_mask_2d)
             key = cv2.waitKey(100)
             if key == ord('q'):
                 return
 
         if plot3d:
-            print("Before transform_occupancy_grid_to_points")
-            print("k_raw.occupancy_shape", k_raw.occupancy_shape)
-            print("occupancy_grid.shape", occupancy_grid.shape)
-            final_points = k_raw.transform_occupancy_grid_to_points(occupancy_grid)
+            # print("Before transform_occupancy_grid_to_points")
+            
+            final_points = k_raw.transform_occupancy_grid_to_points(occupancy_grid, skip=1)
+            # final_points = velodyine_points_camera
+            
+            # print("k_raw.occupancy_shape", k_raw.occupancy_shape)
+            # print("occupancy_grid.shape", occupancy_grid.shape)
             print("final_points.shape", final_points.shape)
+            print(np.sum(occupancy_grid))
+
             MESHES = {
                 'vertexes': np.array([]),
                 'faces': np.array([]), 
