@@ -14,7 +14,7 @@ from .helper import *
 
 # Sensor Setup: https://www.cvlibs.net/datasets/kitti/setup.php
 
-plot3d = False
+plot3d = True
 plot2d = True
 point_cloud_array = None
 if __name__ == '__main__':
@@ -225,9 +225,9 @@ class KittiRaw(Dataset):
         )])
         # final_points = np.fromfunction(lambda xi: f(xi), np.indices(occupancy_grid.shape))
 
-        final_points = final_points[np.logical_not(
-            np.logical_and(final_points[:,0] == 0, final_points[:,1] == 0, final_points[:,2] == 0,)
-        )]
+        # final_points = final_points[np.logical_not(
+        #     np.logical_and(final_points[:,0] == 0, final_points[:,1] == 0, final_points[:,2] == 0,)
+        # )]
 
         # final_points = final_points.cpu().detach().numpy()
         final_points = np.array(final_points, dtype=np.float32)
@@ -273,6 +273,8 @@ class KittiRaw(Dataset):
         h_fov=(-45,45)
         velodyine_points, c_ = velo_points_filter(velodyine_points, v_fov, h_fov)
         velodyine_points_orig = velodyine_points.copy()
+
+        velodyine_points_camera = []
 
         RT_ = np.concatenate((self.R, self.T),axis = 1)
     
@@ -324,14 +326,15 @@ class KittiRaw(Dataset):
                 # -self.grid_y < yv < self.grid_y and 
                 # -self.grid_z < zv < self.grid_z
             ):
+                velodyine_points_camera.append((x,y,z))
                 occupancy_grid[i,j,k] = 1.0
                 # occupancy_mask_2d[i,j] = int(min(255, 255*max(0, (k-6)/(15-6))))
                 occupancy_mask_2d[i,j] = max(int(min(255, 255*max(0, (k-6)/(15-6)))), occupancy_mask_2d[i,j])
 
         
-        velodyine_points_camera = []
-        for index in range(velodyine_points.shape[1]):
-            velodyine_points_camera.append(velodyine_points[:,index])
+        # velodyine_points_camera = []
+        # for index in range(velodyine_points.shape[1]):
+        #     velodyine_points_camera.append(velodyine_points[:,index])
         
         velodyine_points_camera = np.array(velodyine_points_camera, dtype=np.float32)
 
@@ -486,11 +489,11 @@ def main(point_cloud_array=point_cloud_array):
         kitti_raw_base_path=os.path.expanduser("~/Datasets/kitti/raw/"),
         # date_folder="2011_09_26",
         # sub_folder="2011_09_26_drive_0001_sync",
-        grid_size = (100.0, 100.0, 50),
-        scale = 2.24 * 2,
-        sigma = 5.0,
+        grid_size = (200.0, 50.0, 10),
+        scale = 1.5,
+        sigma = 1.0,
         # sigma = None,
-        gaus_n=5
+        gaus_n=1
     )
     print("Found", len(k_raw), "images ")
     for index in range(len(k_raw)):
@@ -516,19 +519,28 @@ def main(point_cloud_array=point_cloud_array):
         # img_input = data['image'+img_id+'_raw']
         img_input = data['image'+img_id]
         img_input = cv2.resize(img_input, (w, h))
-        # image_points = k_raw.transform_points_to_image_space(velodyine_points, data['image'+img_id], roi, data['K'+img_id], R_cam, T_cam, P_rect)
-        image_points = k_raw.transform_points_to_image_space(velodyine_points, roi, data['K'+img_id], R_cam, T_cam, P_rect)
+        
+        # image_points = k_raw.transform_points_to_image_space(velodyine_points, roi, data['K'+img_id], R_cam, T_cam, P_rect)
+        image_points = k_raw.transform_occupancy_grid_to_image_space(occupancy_grid, roi, data['K'+img_id], R_cam, T_cam, P_rect)
+        
         image_points = cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-        image_points = cv2.addWeighted(image_points, 0.5, img_input, 0.1, 0.0)
+        # image_points = cv2.addWeighted(image_points, 0.5, img_input, 0.1, 0.0)
+
+        dilatation_size = 3
+        dilation_shape = cv2.MORPH_ELLIPSE
+        element = cv2.getStructuringElement(dilation_shape, (2 * dilatation_size + 1, 2 * dilatation_size + 1),
+                                        (dilatation_size, dilatation_size))
+        image_points = cv2.dilate(image_points, element)
+
         if plot2d:
             cv2.imshow('img_input', img_input)
             # cv2.imshow('image_points', cv2.normalize(image_points - np.min(image_points.flatten()), None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1))
             # cv2.imshow('image_points', cv2.normalize(image_points, None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1))
             # cv2.imshow('image_points', cv2.normalize(image_points - np.min(image_points.flatten()), None, 255, 0, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U))
             # cv2.imshow('image_points', cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U))
-            image_points_grid = k_raw.transform_occupancy_grid_to_image_space(occupancy_grid, roi, data['K'+img_id], R_cam, T_cam, P_rect)
+            # image_points_grid = k_raw.transform_occupancy_grid_to_image_space(occupancy_grid, roi, data['K'+img_id], R_cam, T_cam, P_rect)
             cv2.imshow('image_points', image_points - np.min(image_points.flatten()))
-            cv2.imshow('image_points_grid', image_points_grid - np.min(image_points_grid.flatten()))
+            # cv2.imshow('image_points_grid', image_points_grid - np.min(image_points_grid.flatten()))
 
             # cv2.imshow('occupancy_mask_2d', occupancy_mask_2d)
             key = cv2.waitKey(100)
@@ -540,6 +552,7 @@ def main(point_cloud_array=point_cloud_array):
             
             final_points = k_raw.transform_occupancy_grid_to_points(occupancy_grid, skip=1)
             # final_points = velodyine_points_camera
+            # final_points = velodyine_points
             
             # print("k_raw.occupancy_shape", k_raw.occupancy_shape)
             # print("occupancy_grid.shape", occupancy_grid.shape)

@@ -1,3 +1,4 @@
+from ctypes.wintypes import POINT
 import numpy as np
 import os
 
@@ -13,6 +14,10 @@ import sys
 from pyqtgraph import Vector
 
 import math
+import matplotlib as mpl
+cmap = mpl.colormaps['viridis']
+# cmap = mpl.colormaps['magma']
+
 
 global POINTS
 global point_cloud_array
@@ -29,6 +34,10 @@ def dist(a, b):
 global min_height, max_height, colors, calculated, max_dist, min_dist, dist_range
 calculated = False
 
+colors_hash = []
+colors_hash_res = 10
+for i in range(0,colors_hash_res):
+    colors_hash.append(cmap(float(i)/(colors_hash_res-1)))
 
 def update_graph():
     global graph_region, POINTS, MESHES, point_cloud_array, mesh_region
@@ -41,14 +50,36 @@ def update_graph():
             POINTS = DATA['POINTS']
             MESHES = DATA['MESHES']
         
+        def col_map(index):
+            return colors_hash[round(index*(colors_hash_res-1))]
+
         #POINTS = [(0,0,1), ]
         colors = np.ones(shape=(len(POINTS), 3), dtype=np.uint8)
         if len(POINTS)>0:
             POINTS = np.array(POINTS)
+            heights = POINTS[:,2]
+            
+            max_height = np.max(heights)
+            min_height = np.min(heights)
+            # print('min_height, max_height', min_height, max_height)
+
+            # max_height = 1.1
+            # min_height = -3.5
+
+            heights = (heights - min_height)/(max_height-min_height)
+            heights_color_index = np.rint(heights*(colors_hash_res-1)).astype(np.uint8)
+            # COLORS = 255*np.array([cmap(xi) for xi in 255*(POINTS[:,2] - min_height)/(max_height-min_height)])[:3,]
+            
+            COLORS = np.array([colors_hash[xi] for xi in heights_color_index])
+            # COLORS = np.array([colors_hash[round(xi*(colors_hash_res-1))] for xi in heights])
+            # COLORS = np.array([col_map(xi) for xi in heights])
+            # COLORS = np.array([cmap(xi)[:3] for xi in heights])
+            # COLORS = np.array([(xi, xi, xi) for xi in heights])
+            
             #POINTS_scaled = POINTS / 10000.0
             POINTS_scaled = POINTS
             #print(POINTS)
-            graph_region.setData(pos=POINTS_scaled, color=colors)
+            graph_region.setData(pos=POINTS_scaled, color=COLORS)
             #graph_region.setData(pos=POINTS)
 
         if 'vertexes' in MESHES and len(MESHES['vertexes'])>0:
