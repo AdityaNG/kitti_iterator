@@ -9,13 +9,14 @@ import torch
 
 import cv2
 import itertools
+import glob
 
 from .helper import *
 
 # Sensor Setup: https://www.cvlibs.net/datasets/kitti/setup.php
 
-plot3d = True
-plot2d = True
+plot3d = False
+plot2d = False
 point_cloud_array = None
 if __name__ == '__main__':
     if plot3d:
@@ -296,7 +297,7 @@ class KittiRaw(Dataset):
         for index in range(image_points.shape[1]):
             img_x, img_y = image_points[:, index]
             x, y, z = velodyine_points[:, index]
-
+    
             # x, y, z = x, z, y # Half
             # x, y, z = y, x, z # N
             # x, y, z = y, z, x # N
@@ -470,7 +471,37 @@ class KittiRaw(Dataset):
         for key in self.transform:
             data[key] = self.transform[key](data[key])
         return data
-        
+
+def get_kitti_tree(kitti_raw_base_path):
+    date_folder_list = list(filter(os.path.isdir, glob.glob(os.path.join(kitti_raw_base_path, '*'))))
+    date_folder_list = list(filter(lambda i: len(i.split('_'))==3, date_folder_list))
+    kitti_tree = dict()
+    for date_folder in date_folder_list:
+        date_id = date_folder.split('/')[-1]
+        # print(date_id)
+        sub_folder_list = list(filter(os.path.isdir, glob.glob(os.path.join(date_folder, '*'))))
+        sub_folder_list = list(filter(lambda i: len(i.split('/')[-1].split('_'))==6, sub_folder_list))
+        sub_folder_list = list(map(lambda i: i.split('/')[-1], sub_folder_list))
+
+        kitti_tree[date_id] = sub_folder_list
+        # print(sub_folder_list)
+    return kitti_tree
+
+def get_kitti_raw(**kwargs):
+    kitti_raw_base_path=kwargs['kitti_raw_base_path']
+    kitti_tree = get_kitti_tree(kitti_raw_base_path)
+    kitti_raw = []
+    for date_folder in kitti_tree:
+        for sub_folder in kitti_tree[date_folder]:
+            kitti_raw.append(
+                KittiRaw(
+                    # kitti_raw_base_path=kitti_raw_base_path,
+                    date_folder=date_folder,
+                    sub_folder=sub_folder,
+                    **kwargs
+                )
+            )
+    return kitti_raw
 
 def main(point_cloud_array=point_cloud_array):
     # k_raw = KittiRaw()
@@ -484,17 +515,31 @@ def main(point_cloud_array=point_cloud_array):
     #     # sigma = None,
     #     gaus_n=5
     # )
+
+    # k_raw = KittiRaw(
+    #     # kitti_raw_base_path="/home/aditya/Datasets/kitti/raw/",
+    #     kitti_raw_base_path=os.path.expanduser("~/Datasets/kitti/raw/"),
+    #     # date_folder="2011_09_26",
+    #     # sub_folder="2011_09_26_drive_0001_sync",
+    #     grid_size = (200.0, 50.0, 10),
+    #     scale = 1.5,
+    #     sigma = 1.0,
+    #     # sigma = None,
+    #     gaus_n=1
+    # )
+    kitti_raw_base_path=os.path.expanduser("~/Datasets/kitti/raw/")
+    kitti_raw = get_kitti_raw(kitti_raw_base_path=kitti_raw_base_path)
+    print('len(kitti_raw)', len(kitti_raw))
+    return
+
     k_raw = KittiRaw(
-        # kitti_raw_base_path="/home/aditya/Datasets/kitti/raw/",
         kitti_raw_base_path=os.path.expanduser("~/Datasets/kitti/raw/"),
-        # date_folder="2011_09_26",
-        # sub_folder="2011_09_26_drive_0001_sync",
-        grid_size = (200.0, 50.0, 10),
-        scale = 1.5,
+        grid_size = (150.0, 74.0, 17.0),
+        scale = 1.0,
         sigma = 1.0,
-        # sigma = None,
         gaus_n=1
     )
+
     print("Found", len(k_raw), "images ")
     for index in range(len(k_raw)):
         data = k_raw[index]
