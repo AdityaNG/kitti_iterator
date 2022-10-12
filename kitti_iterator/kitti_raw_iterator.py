@@ -397,11 +397,11 @@ class KittiRaw(Dataset):
         image_03 = os.path.join(self.image_03_path, 'data', id + ".png")
         velodyine_points = os.path.join(self.velodyne_points_path, 'data', id + ".bin")
         
-        assert os.path.exists(image_00)
-        assert os.path.exists(image_01)
-        assert os.path.exists(image_02)
-        assert os.path.exists(image_03)
-        assert os.path.exists(velodyine_points)
+        assert os.path.exists(image_00), image_00
+        assert os.path.exists(image_01), image_01
+        assert os.path.exists(image_02), image_02
+        assert os.path.exists(image_03), image_03
+        assert os.path.exists(velodyine_points), velodyine_points
 
         image_00_raw = cv2.imread(image_00)
         image_01_raw = cv2.imread(image_01)
@@ -504,6 +504,7 @@ def get_kitti_raw(**kwargs):
     return kitti_raw
 
 def main(point_cloud_array=point_cloud_array):
+    import tqdm
     # k_raw = KittiRaw()
     # k_raw = KittiRaw(
     #     # kitti_raw_base_path="kitti_raw_mini",
@@ -530,6 +531,10 @@ def main(point_cloud_array=point_cloud_array):
     kitti_raw_base_path=os.path.expanduser("~/Datasets/kitti/raw/")
     kitti_raw = get_kitti_raw(kitti_raw_base_path=kitti_raw_base_path)
     print('len(kitti_raw)', len(kitti_raw))
+    for k_raw in tqdm.tqdm(kitti_raw):
+        for dat in k_raw:
+            pass
+        
     return
 
     k_raw = KittiRaw(
