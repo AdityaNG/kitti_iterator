@@ -1,4 +1,7 @@
 import os
+from multiprocessing.pool import Pool
+
+import time
 import yaml
 import numpy as np
 import scipy
@@ -15,7 +18,7 @@ from .helper import *
 
 # Sensor Setup: https://www.cvlibs.net/datasets/kitti/setup.php
 
-plot3d = False
+plot3d = True
 plot2d = False
 point_cloud_array = None
 if __name__ == '__main__':
@@ -56,7 +59,7 @@ def gaus_blur_3D(data, sigma = 1.0, n=5, device = device):
         kernel = torch.tensor(kernel).unsqueeze(0).unsqueeze(0).to(device=device, dtype=torch.float32)
         data = torch.tensor(data).unsqueeze(0).to(device=device, dtype=torch.float32)
 
-        filtered = torch.nn.functional.conv3d(data, kernel, stride=1, padding=n)
+        filtered = torch.nn.functional.conv3d(data, kernel, stride=1)
 
         # return filtered.cpu().detach().squeeze().numpy()
         return filtered.cpu().detach().numpy()
@@ -75,6 +78,32 @@ def gaus_blur_3D_cpu(data, sigma = 1.0, n=5):
     
     return filtered
 
+def convert_voxel_chunk_to_point(chunk_id, grid_x, grid_y, grid_z, occ_x, occ_y, occ_z, threshold, occupancy_grid, jump_size, skip, sh):
+    def convert_voxel_to_point(xi):
+        i, j, k = xi
+        if occupancy_grid[i,j,k] > threshold:
+            x,y,z = [
+                (i) * grid_x / (occ_x/2),
+                (j - occ_y/2) * grid_y / (occ_y/2),
+                (k - occ_z/2) * grid_z / (occ_z/2)
+            ]
+            return (x,y,z)
+        return (0,0,0)
+
+    indices = itertools.product(
+        range(jump_size*chunk_id, min(sh[0], jump_size*(chunk_id+1)), skip),
+        range(0, occupancy_grid.shape[1], skip),
+        range(0, occupancy_grid.shape[2], skip)
+    )
+
+    # print('>', chunk_id, jump_size*chunk_id, min(sh[0], jump_size*(chunk_id+1)))
+
+    points = np.array([convert_voxel_to_point(xi) for xi in indices], dtype=np.float32)
+    # print('points.shape', points.shape)
+    points = points[np.logical_not(
+        np.logical_and(points[:,0] == 0, points[:,1] == 0, points[:,2] == 0,)
+    )]
+    return points
 
 class KittiRaw(Dataset):
 
@@ -205,6 +234,24 @@ class KittiRaw(Dataset):
         return final_points
     
     def transform_occupancy_grid_to_points(self, occupancy_grid, threshold=0.5, device=device, skip=3):
+        start_time = time.time()
+        occupancy_grid = occupancy_grid.squeeze()
+        sh = occupancy_grid.shape
+        total_size = sh[0]
+        n_chunks = 12
+        assert int(total_size/n_chunks) == total_size//n_chunks
+        jump_size = total_size//n_chunks
+        
+        with Pool() as pool:
+            points_list = list(pool.starmap(convert_voxel_chunk_to_point, 
+                list(map(lambda ele: (ele, self.grid_x, self.grid_y, self.grid_z, self.occ_x, self.occ_y, self.occ_z, threshold, occupancy_grid, jump_size, skip, sh), range(n_chunks)))
+            ))
+
+        final_points = np.concatenate(points_list)
+
+        return final_points
+
+    def transform_occupancy_grid_to_points_list_comp(self, occupancy_grid, threshold=0.5, device=device, skip=3):
         occupancy_grid = occupancy_grid.squeeze()
         # occupancy_grid = torch.tensor(occupancy_grid, device=device)
         def f(xi):
@@ -226,9 +273,9 @@ class KittiRaw(Dataset):
         )])
         # final_points = np.fromfunction(lambda xi: f(xi), np.indices(occupancy_grid.shape))
 
-        # final_points = final_points[np.logical_not(
-        #     np.logical_and(final_points[:,0] == 0, final_points[:,1] == 0, final_points[:,2] == 0,)
-        # )]
+        final_points = final_points[np.logical_not(
+            np.logical_and(final_points[:,0] == 0, final_points[:,1] == 0, final_points[:,2] == 0,)
+        )]
 
         # final_points = final_points.cpu().detach().numpy()
         final_points = np.array(final_points, dtype=np.float32)
@@ -332,7 +379,8 @@ class KittiRaw(Dataset):
                 # occupancy_mask_2d[i,j] = int(min(255, 255*max(0, (k-6)/(15-6))))
                 occupancy_mask_2d[i,j] = max(int(min(255, 255*max(0, (k-6)/(15-6)))), occupancy_mask_2d[i,j])
 
-        
+        if type(self.sigma)!=type(None):
+            occupancy_grid = gaus_blur_3D(occupancy_grid, sigma=self.sigma, n=self.gaus_n)
         # velodyine_points_camera = []
         # for index in range(velodyine_points.shape[1]):
         #     velodyine_points_camera.append(velodyine_points[:,index])
@@ -378,7 +426,7 @@ class KittiRaw(Dataset):
                     min_height = min(min_height, k)
                     max_height = max(max_height, k)
         
-        if type(self.sigma)==float:
+        if type(self.sigma)!=type(None):
             occupancy_grid = gaus_blur_3D(occupancy_grid, sigma=self.sigma, n=self.gaus_n)
             # occupancy_grid = torch.nn.Sigmoid()(occupancy_grid)
 
@@ -505,45 +553,38 @@ def get_kitti_raw(**kwargs):
 
 def main(point_cloud_array=point_cloud_array):
     import tqdm
+    import open3d as o3d
     # k_raw = KittiRaw()
-    # k_raw = KittiRaw(
-    #     # kitti_raw_base_path="kitti_raw_mini",
-    #     # date_folder="2011_09_26",
-    #     # sub_folder="2011_09_26_drive_0001_sync",
-    #     grid_size = (100.0, 50.0, 5),
-    #     scale = 2.24 * 2,
-    #     sigma = 5.0,
-    #     # sigma = None,
-    #     gaus_n=5
-    # )
-
-    # k_raw = KittiRaw(
-    #     # kitti_raw_base_path="/home/aditya/Datasets/kitti/raw/",
-    #     kitti_raw_base_path=os.path.expanduser("~/Datasets/kitti/raw/"),
-    #     # date_folder="2011_09_26",
-    #     # sub_folder="2011_09_26_drive_0001_sync",
-    #     grid_size = (200.0, 50.0, 10),
-    #     scale = 1.5,
-    #     sigma = 1.0,
-    #     # sigma = None,
-    #     gaus_n=1
-    # )
-    kitti_raw_base_path=os.path.expanduser("~/Datasets/kitti/raw/")
-    kitti_raw = get_kitti_raw(kitti_raw_base_path=kitti_raw_base_path)
-    print('len(kitti_raw)', len(kitti_raw))
-    for k_raw in tqdm.tqdm(kitti_raw):
-        for dat in k_raw:
-            pass
-        
-    return
+    # grid_size = (751/25.0, 1063/25.0, 135/25.0)
+    grid_scale = 10.0
+    grid_size = (1063/grid_scale, 751/grid_scale, 135/grid_scale)
+    
 
     k_raw = KittiRaw(
-        kitti_raw_base_path=os.path.expanduser("~/Datasets/kitti/raw/"),
-        grid_size = (150.0, 74.0, 17.0),
-        scale = 1.0,
+        # kitti_raw_base_path="kitti_raw_mini",
+        # date_folder="2011_09_26",
+        # sub_folder="2011_09_26_drive_0001_sync",
+        grid_size = grid_size,
+        scale = grid_scale,
         sigma = 1.0,
-        gaus_n=1
+        # sigma = None,
+        gaus_n=2
     )
+    
+    print('Starting timer')
+    import time
+    start_time = time.time()
+    dat = k_raw[0]
+    print(dat['occupancy_grid'].shape)
+    print(time.time()-start_time)
+    
+    # k_raw = KittiRaw(
+    #     kitti_raw_base_path=os.path.expanduser("~/Datasets/kitti/raw/"),
+    #     grid_size = (150.0, 74.0, 17.0),
+    #     scale = 1.0,
+    #     sigma = 1.0,
+    #     gaus_n=1
+    # )
 
     print("Found", len(k_raw), "images ")
     for index in range(len(k_raw)):
@@ -565,24 +606,24 @@ def main(point_cloud_array=point_cloud_array):
         P_rect = calib_cam_to_cam['P_rect' + img_id].reshape(3, 4)[:3,:3]
 
         
-        x, y, w, h = roi
-        # img_input = data['image'+img_id+'_raw']
-        img_input = data['image'+img_id]
-        img_input = cv2.resize(img_input, (w, h))
-        
-        # image_points = k_raw.transform_points_to_image_space(velodyine_points, roi, data['K'+img_id], R_cam, T_cam, P_rect)
-        image_points = k_raw.transform_occupancy_grid_to_image_space(occupancy_grid, roi, data['K'+img_id], R_cam, T_cam, P_rect)
-        
-        image_points = cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-        # image_points = cv2.addWeighted(image_points, 0.5, img_input, 0.1, 0.0)
-
-        dilatation_size = 3
-        dilation_shape = cv2.MORPH_ELLIPSE
-        element = cv2.getStructuringElement(dilation_shape, (2 * dilatation_size + 1, 2 * dilatation_size + 1),
-                                        (dilatation_size, dilatation_size))
-        image_points = cv2.dilate(image_points, element)
-
         if plot2d:
+            x, y, w, h = roi
+            # img_input = data['image'+img_id+'_raw']
+            img_input = data['image'+img_id]
+            img_input = cv2.resize(img_input, (w, h))
+            
+            # image_points = k_raw.transform_points_to_image_space(velodyine_points, roi, data['K'+img_id], R_cam, T_cam, P_rect)
+            image_points = k_raw.transform_occupancy_grid_to_image_space(occupancy_grid, roi, data['K'+img_id], R_cam, T_cam, P_rect)
+            
+            image_points = cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+            # image_points = cv2.addWeighted(image_points, 0.5, img_input, 0.1, 0.0)
+
+            dilatation_size = 3
+            dilation_shape = cv2.MORPH_ELLIPSE
+            element = cv2.getStructuringElement(dilation_shape, (2 * dilatation_size + 1, 2 * dilatation_size + 1),
+                                            (dilatation_size, dilatation_size))
+            image_points = cv2.dilate(image_points, element)
+
             cv2.imshow('img_input', img_input)
             # cv2.imshow('image_points', cv2.normalize(image_points - np.min(image_points.flatten()), None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1))
             # cv2.imshow('image_points', cv2.normalize(image_points, None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1))
@@ -598,9 +639,17 @@ def main(point_cloud_array=point_cloud_array):
                 return
 
         if plot3d:
+            # o3d.visualization.draw_geometries([voxel_grid])
+            # return
             # print("Before transform_occupancy_grid_to_points")
+
+            print('Starting transform_occupancy_grid_to_points timer')
+            start_time = time.time()
+            final_points = k_raw.transform_occupancy_grid_to_points(occupancy_grid, threshold=0.001, skip=1)
+            # final_points = k_raw.transform_occupancy_grid_to_points_list_comp(occupancy_grid, threshold=0.001, skip=int(3))
+            # final_points = velodyine_points_camera
+            print(time.time() - start_time)
             
-            final_points = k_raw.transform_occupancy_grid_to_points(occupancy_grid, skip=1)
             # final_points = velodyine_points_camera
             # final_points = velodyine_points
             
@@ -618,6 +667,13 @@ def main(point_cloud_array=point_cloud_array):
                 'POINTS': final_points,
                 'MESHES': MESHES
             })
+
+            pcd = o3d.geometry.PointCloud()
+            # pcd.points = o3d.utility.Vector3dVector(velodyine_points_camera)
+            pcd.points = o3d.utility.Vector3dVector(final_points)
+            o3d.visualization.draw_geometries([pcd])
+            
+            return
 
 if __name__ == "__main__":
     if plot3d:
