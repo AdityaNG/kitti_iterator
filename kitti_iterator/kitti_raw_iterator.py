@@ -233,12 +233,11 @@ class KittiRaw(Dataset):
         final_points = np.array(final_points, dtype=np.float32)
         return final_points
     
-    def transform_occupancy_grid_to_points(self, occupancy_grid, threshold=0.5, device=device, skip=3):
+    def transform_occupancy_grid_to_points(self, occupancy_grid, threshold=0.5, device=device, skip=1, n_chunks = 12):
         start_time = time.time()
         occupancy_grid = occupancy_grid.squeeze()
         sh = occupancy_grid.shape
         total_size = sh[0]
-        n_chunks = 12
         assert int(total_size/n_chunks) == total_size//n_chunks
         jump_size = total_size//n_chunks
         
