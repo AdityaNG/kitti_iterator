@@ -61,8 +61,9 @@ def gaus_blur_3D(data, sigma = 1.0, n=5, device = device):
 
         filtered = torch.nn.functional.conv3d(data, kernel, stride=1)
 
-        # return filtered.cpu().detach().squeeze().numpy()
-        return filtered.cpu().detach().numpy()
+        return filtered.cpu().detach().squeeze().numpy()
+        # assert
+        # return filtered.cpu().detach().numpy()
 
 def gaus_blur_3D_cpu(data, sigma = 1.0, n=5):
     # first build the smoothing kernel
