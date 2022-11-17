@@ -59,7 +59,7 @@ def gaus_blur_3D(data, sigma = 1.0, n=5, device = device):
         kernel = torch.tensor(kernel).unsqueeze(0).unsqueeze(0).to(device=device, dtype=torch.float32)
         data = torch.tensor(data).unsqueeze(0).to(device=device, dtype=torch.float32)
 
-        filtered = torch.nn.functional.conv3d(data, kernel, stride=1)
+        filtered = torch.nn.functional.conv3d(data, kernel, stride=1, padding=n)
 
         return filtered.cpu().detach().squeeze().numpy()
         # assert
