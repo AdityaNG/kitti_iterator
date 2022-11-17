@@ -60,6 +60,8 @@ def gaus_blur_3D(data, sigma = 1.0, n=5, device = device):
         data = torch.tensor(data).unsqueeze(0).to(device=device, dtype=torch.float32)
 
         filtered = torch.nn.functional.conv3d(data, kernel, stride=1, padding=n)
+        
+        filtered = torch.nn.Sigmoid()(filtered)
 
         return filtered.cpu().detach().squeeze().numpy()
         # assert
@@ -304,7 +306,7 @@ class KittiRaw(Dataset):
         return image_points
 
     def transform_occupancy_grid_to_image_space(self, occupancuy_grid, roi, intrinsic_mat, R_cam, T_cam, P_rect):
-        pc = self.transform_occupancy_grid_to_points(occupancuy_grid, threshold=0.0, skip=1)
+        pc = self.transform_occupancy_grid_to_points(occupancuy_grid, threshold=0.5, skip=1)
         image_points = self.transform_points_to_image_space(pc, roi, intrinsic_mat, R_cam, T_cam, P_rect)
         return image_points
         
@@ -651,7 +653,7 @@ def main(point_cloud_array=point_cloud_array):
 
             print('Starting transform_occupancy_grid_to_points timer')
             start_time = time.time()
-            final_points = k_raw.transform_occupancy_grid_to_points(occupancy_grid, threshold=0.001, skip=1)
+            final_points = k_raw.transform_occupancy_grid_to_points(occupancy_grid, threshold=0.5, skip=1)
             # final_points = k_raw.transform_occupancy_grid_to_points_list_comp(occupancy_grid, threshold=0.001, skip=int(3))
             # final_points = velodyine_points_camera
             print(time.time() - start_time)
