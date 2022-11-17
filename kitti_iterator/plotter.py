@@ -33,6 +33,7 @@ def dist(a, b):
 
 global min_height, max_height, colors, calculated, max_dist, min_dist, dist_range
 calculated = False
+colors_enabled = True
 
 colors_hash = []
 colors_hash_res = 10
@@ -58,19 +59,20 @@ def update_graph():
         if len(POINTS)>0:
             POINTS = np.array(POINTS)
             
-            # heights = POINTS[:,2]
-            
-            # max_height = np.max(heights)
-            # min_height = np.min(heights)
-            # # print('min_height, max_height', min_height, max_height)
+            if colors_enabled:
+                heights = POINTS[:,2]
+                
+                max_height = np.max(heights)
+                min_height = np.min(heights)
+                # print('min_height, max_height', min_height, max_height)
 
-            # # max_height = 1.1
-            # # min_height = -3.5
+                # max_height = 1.1
+                # min_height = -3.5
 
-            # heights = (heights - min_height)/(max_height-min_height)
-            # heights_color_index = np.rint(heights*(colors_hash_res-1)).astype(np.uint8)
-            
-            # COLORS = np.array([colors_hash[xi] for xi in heights_color_index])
+                heights = (heights - min_height)/(max_height-min_height)
+                heights_color_index = np.rint(heights*(colors_hash_res-1)).astype(np.uint8)
+                
+                COLORS = np.array([colors_hash[xi] for xi in heights_color_index])
             
             #POINTS_scaled = POINTS / 10000.0
             POINTS_scaled = POINTS

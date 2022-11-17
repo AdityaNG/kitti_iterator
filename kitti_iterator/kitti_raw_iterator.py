@@ -19,7 +19,7 @@ from .helper import *
 # Sensor Setup: https://www.cvlibs.net/datasets/kitti/setup.php
 
 plot3d = True
-plot2d = False
+plot2d = True
 point_cloud_array = None
 if __name__ == '__main__':
     if plot3d:
@@ -233,7 +233,7 @@ class KittiRaw(Dataset):
         final_points = np.array(final_points, dtype=np.float32)
         return final_points
     
-    def transform_occupancy_grid_to_points(self, occupancy_grid, threshold=0.5, device=device, skip=1, n_chunks = 12):
+    def transform_occupancy_grid_to_points_starmap(self, occupancy_grid, threshold=0.5, device=device, skip=1, n_chunks = 12):
         start_time = time.time()
         occupancy_grid = occupancy_grid.squeeze()
         sh = occupancy_grid.shape
@@ -250,7 +250,7 @@ class KittiRaw(Dataset):
 
         return final_points
 
-    def transform_occupancy_grid_to_points_list_comp(self, occupancy_grid, threshold=0.5, device=device, skip=3):
+    def transform_occupancy_grid_to_points(self, occupancy_grid, threshold=0.5, device=device, skip=3):
         occupancy_grid = occupancy_grid.squeeze()
         # occupancy_grid = torch.tensor(occupancy_grid, device=device)
         def f(xi):
@@ -318,6 +318,10 @@ class KittiRaw(Dataset):
         # ans, color = velo3d_2_camera2d_points(velodyine_points, self.R, self.T, P_rect, v_fov=(-24.9, 2.0), h_fov=(-45,45))
         v_fov=(-24.9, 2.0)
         h_fov=(-45,45)
+
+        # v_fov=(-24.9, 20.0)
+        # h_fov=(-45,45)
+
         velodyine_points, c_ = velo_points_filter(velodyine_points, v_fov, h_fov)
         velodyine_points_orig = velodyine_points.copy()
 
@@ -555,8 +559,8 @@ def main(point_cloud_array=point_cloud_array):
     import open3d as o3d
     # k_raw = KittiRaw()
     # grid_size = (751/25.0, 1063/25.0, 135/25.0)
-    grid_scale = 10.0
-    grid_size = (1063/grid_scale, 751/grid_scale, 135/grid_scale)
+    grid_scale = 2.0
+    grid_size = (138/grid_scale, 138/grid_scale, 22/grid_scale)
     
 
     k_raw = KittiRaw(
@@ -567,7 +571,7 @@ def main(point_cloud_array=point_cloud_array):
         scale = grid_scale,
         sigma = 1.0,
         # sigma = None,
-        gaus_n=2
+        gaus_n=1
     )
     
     print('Starting timer')
@@ -627,9 +631,11 @@ def main(point_cloud_array=point_cloud_array):
             # cv2.imshow('image_points', cv2.normalize(image_points - np.min(image_points.flatten()), None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1))
             # cv2.imshow('image_points', cv2.normalize(image_points, None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1))
             # cv2.imshow('image_points', cv2.normalize(image_points - np.min(image_points.flatten()), None, 255, 0, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U))
-            # cv2.imshow('image_points', cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U))
+            cv2.imshow('image_points', cv2.applyColorMap(cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U), cv2.COLORMAP_JET))
             # image_points_grid = k_raw.transform_occupancy_grid_to_image_space(occupancy_grid, roi, data['K'+img_id], R_cam, T_cam, P_rect)
-            cv2.imshow('image_points', image_points - np.min(image_points.flatten()))
+            
+            # cv2.imshow('image_points', image_points - np.min(image_points.flatten()))
+            
             # cv2.imshow('image_points_grid', image_points_grid - np.min(image_points_grid.flatten()))
 
             # cv2.imshow('occupancy_mask_2d', occupancy_mask_2d)
@@ -670,9 +676,9 @@ def main(point_cloud_array=point_cloud_array):
             pcd = o3d.geometry.PointCloud()
             # pcd.points = o3d.utility.Vector3dVector(velodyine_points_camera)
             pcd.points = o3d.utility.Vector3dVector(final_points)
-            o3d.visualization.draw_geometries([pcd])
+            # o3d.visualization.draw_geometries([pcd])
             
-            return
+            # return
 
 if __name__ == "__main__":
     if plot3d:
