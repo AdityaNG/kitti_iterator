@@ -62,7 +62,7 @@ def gaus_blur_3D(data, sigma = 1.0, n=5, device = device):
         kernel = torch.tensor(kernel).unsqueeze(0).unsqueeze(0).to(device=device, dtype=torch.float32)
         data = torch.tensor(data).unsqueeze(0).to(device=device, dtype=torch.float32)
 
-        filtered = torch.nn.functional.conv3d(data, kernel, stride=1, padding=n)
+        filtered = torch.nn.functional.conv3d(data, kernel, stride=1, padding=[n, n, 0])
         
         filtered = torch.nn.Sigmoid()(filtered)
 
@@ -566,7 +566,7 @@ def main(point_cloud_array=point_cloud_array):
     # k_raw = KittiRaw()
     # grid_size = (751/25.0, 1063/25.0, 135/25.0)
     grid_scale = 2.0
-    grid_size = (138/grid_scale, 138/grid_scale, 22/grid_scale)
+    grid_size = (99/grid_scale, 138/grid_scale, 22/grid_scale)
     
 
     k_raw = KittiRaw(
@@ -665,7 +665,7 @@ def main(point_cloud_array=point_cloud_array):
             # final_points = velodyine_points
             
             # print("k_raw.occupancy_shape", k_raw.occupancy_shape)
-            # print("occupancy_grid.shape", occupancy_grid.shape)
+            print("occupancy_grid.shape", occupancy_grid.shape)
             print("final_points.shape", final_points.shape)
             print(np.sum(occupancy_grid))
 
