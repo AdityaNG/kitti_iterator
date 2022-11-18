@@ -16,6 +16,8 @@ import glob
 
 from .helper import *
 
+Z_OFFSET = 1.5
+
 # Sensor Setup: https://www.cvlibs.net/datasets/kitti/setup.php
 
 plot3d = True
@@ -93,7 +95,7 @@ def convert_voxel_chunk_to_point(chunk_id, grid_x, grid_y, grid_z, occ_x, occ_y,
                 (j - occ_y/2) * grid_y / (occ_y/2),
                 (k - occ_z/2) * grid_z / (occ_z/2)
             ]
-            return (x,y,z)
+            return (x,y,z-Z_OFFSET)
         return (0,0,0)
 
     indices = itertools.product(
@@ -128,10 +130,13 @@ class KittiRaw(Dataset):
         self.transform = transform
         self.plot3d = True
         self.plot2d = True
+        if type(scale) == float:
+            scale = (scale, scale, scale)
         self.scale = scale
         self.grid_size = grid_size
-        self.occupancy_shape = list(map(lambda i: int(i*self.scale), self.grid_size))
-        self.occupancy_mask_2d_shape = list(map(lambda i: int(i*self.scale), self.grid_size[:2]))
+        self.occupancy_shape = list(map(lambda ind: int(self.grid_size[ind]*self.scale[ind]), range(len(self.grid_size))))
+        # self.occupancy_mask_2d_shape = list(map(lambda i: int(i*self.scale), self.grid_size[:2]))
+        self.occupancy_mask_2d_shape = list(map(lambda ind: int(self.grid_size[ind]*self.scale[ind]), range(2)))
         self.grid_x, self.grid_y, self.grid_z = list(map(lambda i: i//2, self.grid_size))
         self.occ_x, self.occ_y, self.occ_z = self.occupancy_shape
 
@@ -229,8 +234,9 @@ class KittiRaw(Dataset):
                         (j - self.occ_y/2) * self.grid_y / (self.occ_y/2),
                         (k - self.occ_z/2) * self.grid_z / (self.occ_z/2)
                     ]
+                    z -= Z_OFFSET
                     if occupancy_grid[i,j,k] > threshold:
-                        final_points.add((x,y,z))
+                        final_points.add((x,y,z-Z_OFFSET))
                     else:
                         final_points.add((0,0,0))
                         # if (x,y,z) not in final_points:
@@ -267,7 +273,7 @@ class KittiRaw(Dataset):
                 (k - self.occ_z/2) * self.grid_z / (self.occ_z/2)
             ]
             if occupancy_grid[i,j,k] > threshold:
-                return (x,y,z)
+                return (x,y,z-Z_OFFSET)
             return (0,0,0)
 
         # np.array([f(xi) for xi in x])
@@ -360,6 +366,8 @@ class KittiRaw(Dataset):
             x, y, z = z, x, -y # Inverted
             # x, y, z = z, y, x
 
+            z += Z_OFFSET
+
             xv, yv, zv = velodyine_points_orig[:3, index]
             i, j, k = [
                 # int((p[0]*self.occ_x//2)//self.grid_x + self.occ_x//2),
@@ -375,7 +383,7 @@ class KittiRaw(Dataset):
             #     0 < k < self.occupancy_shape[2]
             # ):
             if (
-                (0 <= img_x < w and 0 <= img_y < h) and
+                # (0 <= img_x < w and 0 <= img_y < h) and
                 0 < i < self.occupancy_shape[0] and
                 0 < j < self.occupancy_shape[1] and
                 0 < k < self.occupancy_shape[2]
@@ -565,8 +573,8 @@ def main(point_cloud_array=point_cloud_array):
     import open3d as o3d
     # k_raw = KittiRaw()
     # grid_size = (751/25.0, 1063/25.0, 135/25.0)
-    grid_scale = 2.0
-    grid_size = (99/grid_scale, 138/grid_scale, 22/grid_scale)
+    grid_scale = (2.0, 2.0, 11.0)
+    grid_size = (138/grid_scale[0], 99/grid_scale[1], 22/grid_scale[2])
     
 
     k_raw = KittiRaw(
