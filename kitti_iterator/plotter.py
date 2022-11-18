@@ -75,7 +75,9 @@ def update_graph():
                 COLORS = np.array([colors_hash[xi] for xi in heights_color_index])
             
             #POINTS_scaled = POINTS / 10000.0
-            POINTS_scaled = POINTS
+            POINTS_scaled = POINTS.copy()
+            # POINTS_scaled[:,2] = POINTS_scaled[:,2]*10.0
+            # POINTS_scaled[:,2] += 10.0
             #print(POINTS)
             graph_region.setData(pos=POINTS_scaled, color=COLORS)
             #graph_region.setData(pos=POINTS)

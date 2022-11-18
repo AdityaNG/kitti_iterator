@@ -268,6 +268,36 @@ class KittiRaw(Dataset):
         def f(xi):
             i, j, k = xi
             x,y,z = [
+                i,
+                (j - self.occ_y/2),
+                (k - self.occ_z/2)
+            ]
+            if occupancy_grid[i,j,k] > threshold:
+                return (x,y,z)
+            return (0,0,0)
+
+        # np.array([f(xi) for xi in x])
+        final_points = np.array([f(xi) for xi in itertools.product(
+            range(0, occupancy_grid.shape[0], skip),
+            range(0, occupancy_grid.shape[1], skip),
+            range(0, occupancy_grid.shape[2], skip)
+        )])
+        # final_points = np.fromfunction(lambda xi: f(xi), np.indices(occupancy_grid.shape))
+
+        final_points = final_points[np.logical_not(
+            np.logical_and(final_points[:,0] == 0, final_points[:,1] == 0, final_points[:,2] == 0,)
+        )]
+
+        # final_points = final_points.cpu().detach().numpy()
+        final_points = np.array(final_points, dtype=np.float32)
+        return final_points
+
+    def transform_occupancy_grid_to_points_world_coords(self, occupancy_grid, threshold=0.5, device=device, skip=3):
+        occupancy_grid = occupancy_grid.squeeze()
+        # occupancy_grid = torch.tensor(occupancy_grid, device=device)
+        def f(xi):
+            i, j, k = xi
+            x,y,z = [
                 (i) * self.grid_x / (self.occ_x/2),
                 (j - self.occ_y/2) * self.grid_y / (self.occ_y/2),
                 (k - self.occ_z/2) * self.grid_z / (self.occ_z/2)
@@ -665,6 +695,8 @@ def main(point_cloud_array=point_cloud_array):
             print('Starting transform_occupancy_grid_to_points timer')
             start_time = time.time()
             final_points = k_raw.transform_occupancy_grid_to_points(occupancy_grid, threshold=0.5, skip=1)
+            # final_points = k_raw.transform_occupancy_grid_to_grid_points(occupancy_grid, threshold=0.5, skip=1)
+            
             # final_points = k_raw.transform_occupancy_grid_to_points_list_comp(occupancy_grid, threshold=0.001, skip=int(3))
             # final_points = velodyine_points_camera
             print(time.time() - start_time)
