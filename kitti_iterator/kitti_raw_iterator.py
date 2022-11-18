@@ -49,9 +49,12 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def gaus_blur_3D(data, sigma = 1.0, n=5, device = device):
     # first build the smoothing kernel
-    x = np.arange(-n,n+1,1)   # coordinate arrays -- make sure they contain 0!
+    x = np.arange(-n,n+1,1)
     y = np.arange(-n,n+1,1)
     z = np.arange(-n,n+1,1)
+
+    z = np.arange(0,1,1)
+
     xx, yy, zz = np.meshgrid(x,y,z)
     kernel = np.exp(-(xx**2 + yy**2 + zz**2)/(2*sigma**2))
 
