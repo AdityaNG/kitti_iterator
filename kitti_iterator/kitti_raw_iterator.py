@@ -17,11 +17,12 @@ import glob
 from .helper import *
 
 Z_OFFSET = 1.5
-
+v_fov=(-24.9, 4.0)
+h_fov=(-85,85)
 # Sensor Setup: https://www.cvlibs.net/datasets/kitti/setup.php
 
 plot3d = True
-plot2d = False
+plot2d = True
 point_cloud_array = None
 if __name__ == '__main__':
     if plot3d:
@@ -335,7 +336,8 @@ class KittiRaw(Dataset):
         # image_points = cv2.resize(image_points, (w, h))
         image_points = np.zeros((h,w,3))
         
-        ans, color = velo3d_2_camera2d_points(velodyine_points, self.R, self.T, P_rect, v_fov=(-24.9, 2.0), h_fov=(-45,45))
+        # ans, color = velo3d_2_camera2d_points(velodyine_points, self.R, self.T, P_rect, v_fov=(-24.9, 2.0), h_fov=(-45,45))
+        ans, color = velo3d_2_camera2d_points(velodyine_points, self.R, self.T, P_rect, v_fov=v_fov, h_fov=h_fov)
         
         for index in range(len(ans[0])):
             img_x, img_y = [ans[0][index], ans[1][index]]
@@ -358,8 +360,6 @@ class KittiRaw(Dataset):
         P_rect = self.calib_cam_to_cam['P_rect_02'].reshape(3, 4)[:3,:3]
 
         # ans, color = velo3d_2_camera2d_points(velodyine_points, self.R, self.T, P_rect, v_fov=(-24.9, 2.0), h_fov=(-45,45))
-        v_fov=(-24.9, 2.0)
-        h_fov=(-45,45)
 
         # v_fov=(-24.9, 20.0)
         # h_fov=(-45,45)
@@ -603,15 +603,19 @@ def main(point_cloud_array=point_cloud_array):
     import open3d as o3d
 
     if plot3d:
-        vis = o3d.visualization.Visualizer()
-        vis.create_window()
-        pcd = o3d.geometry.PointCloud()
-        vis.add_geometry(pcd)
+        # vis = o3d.visualization.Visualizer()
+        # vis.create_window()
+        # pcd = o3d.geometry.PointCloud()
+        # vis.add_geometry(pcd)
+        pass
 
     # k_raw = KittiRaw()
     # grid_size = (751/25.0, 1063/25.0, 135/25.0)
-    grid_scale = (2.0, 2.0, 11.0)
-    grid_size = (138/grid_scale[0], 99/grid_scale[1], 22/grid_scale[2])
+    # grid_scale = (2.0, 2.0, 4.0)
+    # grid_size = (138/grid_scale[0], 99/grid_scale[1], 22/grid_scale[2])
+
+    grid_scale = (2.0, 2.0, 2.0)
+    grid_size = (138/grid_scale[0], 99/grid_scale[1], 14/grid_scale[2])
 
     k_raw = KittiRaw(
         # kitti_raw_base_path="kitti_raw_mini",
@@ -642,7 +646,6 @@ def main(point_cloud_array=point_cloud_array):
     print("Found", len(k_raw), "images ")
     for index in range(len(k_raw)):
         data = k_raw[index]
-        print(list(data.keys()))
         image_02 = data['image_02']
         velodyine_points = data['velodyine_points']
         velodyine_points_camera = data['velodyine_points_camera']
@@ -666,8 +669,8 @@ def main(point_cloud_array=point_cloud_array):
             img_input = data['image'+img_id]
             img_input = cv2.resize(img_input, (w, h))
             
-            # image_points = k_raw.transform_points_to_image_space(velodyine_points, roi, data['K'+img_id], R_cam, T_cam, P_rect)
-            image_points = k_raw.transform_occupancy_grid_to_image_space(occupancy_grid, roi, data['K'+img_id], R_cam, T_cam, P_rect)
+            image_points = k_raw.transform_points_to_image_space(velodyine_points, roi, data['K'+img_id], R_cam, T_cam, P_rect)
+            # image_points = k_raw.transform_occupancy_grid_to_image_space(occupancy_grid, roi, data['K'+img_id], R_cam, T_cam, P_rect)
             
             image_points = cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
             # image_points = cv2.addWeighted(image_points, 0.5, img_input, 0.1, 0.0)
@@ -676,20 +679,20 @@ def main(point_cloud_array=point_cloud_array):
             dilation_shape = cv2.MORPH_ELLIPSE
             element = cv2.getStructuringElement(dilation_shape, (2 * dilatation_size + 1, 2 * dilatation_size + 1),
                                             (dilatation_size, dilatation_size))
-            image_points = cv2.dilate(image_points, element)
+            image_points_gt = cv2.dilate(image_points, element)
 
             cv2.imshow('img_input', img_input)
-            # cv2.imshow('image_points', cv2.normalize(image_points - np.min(image_points.flatten()), None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1))
-            # cv2.imshow('image_points', cv2.normalize(image_points, None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1))
-            # cv2.imshow('image_points', cv2.normalize(image_points - np.min(image_points.flatten()), None, 255, 0, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U))
-            cv2.imshow('image_points', cv2.applyColorMap(cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U), cv2.COLORMAP_JET))
-            # image_points_grid = k_raw.transform_occupancy_grid_to_image_space(occupancy_grid, roi, data['K'+img_id], R_cam, T_cam, P_rect)
-            
-            # cv2.imshow('image_points', image_points - np.min(image_points.flatten()))
-            
-            # cv2.imshow('image_points_grid', image_points_grid - np.min(image_points_grid.flatten()))
+            cv2.imshow('image_points_gt', cv2.applyColorMap(cv2.normalize(image_points_gt - np.min(image_points_gt.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U), cv2.COLORMAP_JET))
 
-            # cv2.imshow('occupancy_mask_2d', occupancy_mask_2d)
+            image_points = k_raw.transform_occupancy_grid_to_image_space(occupancy_grid, roi, data['K'+img_id], R_cam, T_cam, P_rect)            
+            image_points = cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+            element = cv2.getStructuringElement(dilation_shape, (2 * dilatation_size + 1, 2 * dilatation_size + 1),
+                                            (dilatation_size, dilatation_size))
+            image_points_grid = cv2.dilate(image_points, element)
+
+            cv2.imshow('img_input', img_input)
+            cv2.imshow('image_points_grid', cv2.applyColorMap(cv2.normalize(image_points_grid - np.min(image_points_grid.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U), cv2.COLORMAP_JET))
+            
             key = cv2.waitKey(100)
             if key == ord('q'):
                 return
@@ -727,32 +730,33 @@ def main(point_cloud_array=point_cloud_array):
                     'MESHES': MESHES
                 })
 
-            vis.remove_geometry(pcd)
+            # vis.remove_geometry(pcd)
 
             x, y, z = final_points[:,0].copy(), final_points[:,1].copy(), final_points[:,2].copy()
-            final_points[:,0] = y
-            final_points[:,1] = x
+            final_points_o3d = final_points.copy()
+            final_points_o3d[:,0] = y
+            final_points_o3d[:,1] = x
             # points[:,2] = (z*10) + 10
-            final_points[:,2] = z
+            final_points_o3d[:,2] = z
 
             pcd = o3d.geometry.PointCloud()
             # pcd.points = o3d.utility.Vector3dVector(velodyine_points_camera)
-            pcd.points = o3d.utility.Vector3dVector(final_points)
+            pcd.points = o3d.utility.Vector3dVector(final_points_o3d)
 
-            vis.add_geometry(pcd)
-            vis.poll_events()
-            vis.update_renderer()
+            # vis.add_geometry(pcd)
+            # vis.poll_events()
+            # vis.update_renderer()
 
             time.sleep(5)
 
-            # o3d.visualization.draw_geometries([pcd])
-            
-            # return
-    vis.destroy_window()
+    if plot2d:
+        cv2.destroyAllWindows()
+    if plot3d:
+        vis.destroy_window()
 
 if __name__ == "__main__":
-    main(None)
-    exit()
+    # main(None)
+    # exit()
     if plot3d:
         image_loop_proc = Process(target=main, args=(point_cloud_array, ))
         image_loop_proc.start()
