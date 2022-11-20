@@ -21,7 +21,7 @@ Z_OFFSET = 1.5
 # Sensor Setup: https://www.cvlibs.net/datasets/kitti/setup.php
 
 plot3d = True
-plot2d = True
+plot2d = False
 point_cloud_array = None
 if __name__ == '__main__':
     if plot3d:
@@ -345,7 +345,7 @@ class KittiRaw(Dataset):
         return image_points
 
     def transform_occupancy_grid_to_image_space(self, occupancuy_grid, roi, intrinsic_mat, R_cam, T_cam, P_rect):
-        pc = self.transform_occupancy_grid_to_points(occupancuy_grid, threshold=0.5, skip=1)
+        pc = self.transform_occupancy_grid_to_points_world_coords(occupancuy_grid, threshold=0.5, skip=1)
         image_points = self.transform_points_to_image_space(pc, roi, intrinsic_mat, R_cam, T_cam, P_rect)
         return image_points
         
@@ -601,11 +601,17 @@ def get_kitti_raw(**kwargs):
 def main(point_cloud_array=point_cloud_array):
     import tqdm
     import open3d as o3d
+
+    if plot3d:
+        vis = o3d.visualization.Visualizer()
+        vis.create_window()
+        pcd = o3d.geometry.PointCloud()
+        vis.add_geometry(pcd)
+
     # k_raw = KittiRaw()
     # grid_size = (751/25.0, 1063/25.0, 135/25.0)
     grid_scale = (2.0, 2.0, 11.0)
     grid_size = (138/grid_scale[0], 99/grid_scale[1], 22/grid_scale[2])
-    
 
     k_raw = KittiRaw(
         # kitti_raw_base_path="kitti_raw_mini",
@@ -636,6 +642,7 @@ def main(point_cloud_array=point_cloud_array):
     print("Found", len(k_raw), "images ")
     for index in range(len(k_raw)):
         data = k_raw[index]
+        print(list(data.keys()))
         image_02 = data['image_02']
         velodyine_points = data['velodyine_points']
         velodyine_points_camera = data['velodyine_points_camera']
@@ -709,24 +716,43 @@ def main(point_cloud_array=point_cloud_array):
             print("final_points.shape", final_points.shape)
             print(np.sum(occupancy_grid))
 
-            MESHES = {
-                'vertexes': np.array([]),
-                'faces': np.array([]), 
-                'faceColors': np.array([])
-            }
-            point_cloud_array.put({
-                'POINTS': final_points,
-                'MESHES': MESHES
-            })
+            if type(point_cloud_array)!=type(None):
+                MESHES = {
+                    'vertexes': np.array([]),
+                    'faces': np.array([]), 
+                    'faceColors': np.array([])
+                }
+                point_cloud_array.put({
+                    'POINTS': final_points,
+                    'MESHES': MESHES
+                })
+
+            vis.remove_geometry(pcd)
+
+            x, y, z = final_points[:,0].copy(), final_points[:,1].copy(), final_points[:,2].copy()
+            final_points[:,0] = y
+            final_points[:,1] = x
+            # points[:,2] = (z*10) + 10
+            final_points[:,2] = z
 
             pcd = o3d.geometry.PointCloud()
             # pcd.points = o3d.utility.Vector3dVector(velodyine_points_camera)
             pcd.points = o3d.utility.Vector3dVector(final_points)
+
+            vis.add_geometry(pcd)
+            vis.poll_events()
+            vis.update_renderer()
+
+            time.sleep(5)
+
             # o3d.visualization.draw_geometries([pcd])
             
             # return
+    vis.destroy_window()
 
 if __name__ == "__main__":
+    main(None)
+    exit()
     if plot3d:
         image_loop_proc = Process(target=main, args=(point_cloud_array, ))
         image_loop_proc.start()
