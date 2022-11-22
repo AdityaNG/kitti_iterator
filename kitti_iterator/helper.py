@@ -1,13 +1,21 @@
 import numpy as np
 
-def depth_color(val, min_d=0, max_d=120):
+def depth_color(val, heights, min_d=0, max_d=70):
     """ 
     print Color(HSV's H value) corresponding to distance(m) 
     close distance = red , far distance = blue
     """
     np.clip(val, 0, max_d, out=val) # max distance is 120m but usually not usual
     return (((val - min_d) / (max_d - min_d)) * 120).astype(np.uint8) 
-
+# 
+# def height_color(val, min_d=-15.44, max_d=2.778):
+def height_color(depth, val, min_d=-2.357143, max_d=0.64285713):
+    """ 
+    print Color(HSV's H value) corresponding to distance(m) 
+    close distance = red , far distance = blue
+    """
+    np.clip(val, 0, max_d, out=val)
+    return (((val - min_d) / (max_d - min_d)) * 255.0).astype(np.uint8) 
 
 def in_h_range_points(points, m, n, fov):
     """ extract horizontal in-range points """
@@ -36,7 +44,7 @@ def fov_setting(points, x, y, z, dist, h_fov, v_fov):
         return points[np.logical_and(h_points, v_points)]
 
 
-def velo_points_filter(points, v_fov, h_fov):
+def velo_points_filter(points, v_fov, h_fov, color_fn=depth_color):
     """ extract points corresponding to FOV setting """
     
     # Projecting to 2D
@@ -64,12 +72,12 @@ def velo_points_filter(points, v_fov, h_fov):
 
     # need dist info for points color
     dist_lim = fov_setting(dist, x, y, z, dist, h_fov, v_fov)
-    color = depth_color(dist_lim, 0, 70)
+    color = color_fn(dist_lim.copy(), z.copy())
     
     return xyz_, color
 
 
-def velo3d_2_camera2d_points(points, R_vc, T_vc, P_, v_fov=(-24.9, 2.0), h_fov=(-45,45)):
+def velo3d_2_camera2d_points(points, R_vc, T_vc, P_, v_fov=(-24.9, 2.0), h_fov=(-45,45), color_fn=depth_color):
     """ print velodyne 3D points corresponding to camera 2D image """
     
     # R_vc = Rotation matrix ( velodyne -> camera )
@@ -88,7 +96,7 @@ def velo3d_2_camera2d_points(points, R_vc, T_vc, P_, v_fov=(-24.9, 2.0), h_fov=(
              [z_1 , z_2 , .. ]
              [ 1  ,  1  , .. ]
     """  
-    xyz_v, c_ = velo_points_filter(points, v_fov, h_fov)
+    xyz_v, c_ = velo_points_filter(points, v_fov, h_fov, color_fn=color_fn)
     
     """
     RT_ - rotation matrix & translation matrix

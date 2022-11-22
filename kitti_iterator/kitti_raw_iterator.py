@@ -16,12 +16,15 @@ import glob
 
 from .helper import *
 
-Z_OFFSET = 1.5
+# Z_OFFSET = 1.5
+# Z_OFFSET = 3.0
+# Z_OFFSET = 2.5
+Z_OFFSET = 1.1
 v_fov=(-24.9, 4.0)
 h_fov=(-85,85)
 # Sensor Setup: https://www.cvlibs.net/datasets/kitti/setup.php
 
-plot3d = True
+plot3d = False
 plot2d = True
 point_cloud_array = None
 if __name__ == '__main__':
@@ -323,9 +326,9 @@ class KittiRaw(Dataset):
         final_points = np.array(final_points, dtype=np.float32)
         return final_points
 
-    def transform_points_to_image_space(self, velodyine_points, roi, intrinsic_mat, R_cam, T_cam, P_rect):
+    def transform_points_to_image_space(self, velodyine_points, roi, intrinsic_mat, R_cam, T_cam, P_rect, color_fn=depth_color):
         x, y, w, h = roi
-        intrinsic_mat = intrinsic_mat
+        # intrinsic_mat = intrinsic_mat
         intrinsic_mat = np.vstack((
             np.hstack((
                 intrinsic_mat, np.zeros((3,1))
@@ -337,7 +340,7 @@ class KittiRaw(Dataset):
         image_points = np.zeros((h,w,3))
         
         # ans, color = velo3d_2_camera2d_points(velodyine_points, self.R, self.T, P_rect, v_fov=(-24.9, 2.0), h_fov=(-45,45))
-        ans, color = velo3d_2_camera2d_points(velodyine_points, self.R, self.T, P_rect, v_fov=v_fov, h_fov=h_fov)
+        ans, color = velo3d_2_camera2d_points(velodyine_points, self.R, self.T, P_rect, v_fov=v_fov, h_fov=h_fov, color_fn=color_fn)
         
         for index in range(len(ans[0])):
             img_x, img_y = [ans[0][index], ans[1][index]]
@@ -395,6 +398,8 @@ class KittiRaw(Dataset):
             # x, y, z = y, z, x # N
             x, y, z = z, x, -y # Inverted
             # x, y, z = z, y, x
+
+            y = -y
 
             z += Z_OFFSET
 
@@ -614,8 +619,11 @@ def main(point_cloud_array=point_cloud_array):
     # grid_scale = (2.0, 2.0, 4.0)
     # grid_size = (138/grid_scale[0], 99/grid_scale[1], 22/grid_scale[2])
 
-    grid_scale = (2.0, 2.0, 2.0)
-    grid_size = (138/grid_scale[0], 99/grid_scale[1], 14/grid_scale[2])
+    grid_scale = (3.0, 3.0, 3.0)
+    # grid_size = (138*2/grid_scale[0], 99/grid_scale[1], 7/grid_scale[2])
+    grid_size = (138*2/grid_scale[0], 99/grid_scale[1], 22/grid_scale[2])
+    grid_size = (502/grid_scale[0], 270/grid_scale[1], 14/grid_scale[2])
+    # 502, 270, 14
 
     k_raw = KittiRaw(
         # kitti_raw_base_path="kitti_raw_mini",
@@ -623,8 +631,8 @@ def main(point_cloud_array=point_cloud_array):
         # sub_folder="2011_09_26_drive_0001_sync",
         grid_size = grid_size,
         scale = grid_scale,
-        sigma = 1.0,
-        # sigma = None,
+        # sigma = 1.0,
+        sigma = None,
         gaus_n=1
     )
     
@@ -669,7 +677,7 @@ def main(point_cloud_array=point_cloud_array):
             img_input = data['image'+img_id]
             img_input = cv2.resize(img_input, (w, h))
             
-            image_points = k_raw.transform_points_to_image_space(velodyine_points, roi, data['K'+img_id], R_cam, T_cam, P_rect)
+            image_points = k_raw.transform_points_to_image_space(velodyine_points, roi, data['K'+img_id], R_cam, T_cam, P_rect, color_fn=depth_color)
             # image_points = k_raw.transform_occupancy_grid_to_image_space(occupancy_grid, roi, data['K'+img_id], R_cam, T_cam, P_rect)
             
             image_points = cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
@@ -682,7 +690,9 @@ def main(point_cloud_array=point_cloud_array):
             image_points_gt = cv2.dilate(image_points, element)
 
             cv2.imshow('img_input', img_input)
-            cv2.imshow('image_points_gt', cv2.applyColorMap(cv2.normalize(image_points_gt - np.min(image_points_gt.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U), cv2.COLORMAP_JET))
+            cv2.imwrite('tmps/' + str(index) + 'img_input.png', img_input)
+            cv2.imshow('image_points_gt', cv2.applyColorMap(cv2.normalize(image_points_gt - np.min(image_points_gt.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U), cv2.COLORMAP_VIRIDIS))
+            cv2.imwrite('tmps/' + str(index) + 'image_points_gt.png', cv2.applyColorMap(cv2.normalize(image_points_gt - np.min(image_points_gt.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U), cv2.COLORMAP_VIRIDIS))
 
             image_points = k_raw.transform_occupancy_grid_to_image_space(occupancy_grid, roi, data['K'+img_id], R_cam, T_cam, P_rect)            
             image_points = cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
@@ -691,9 +701,10 @@ def main(point_cloud_array=point_cloud_array):
             image_points_grid = cv2.dilate(image_points, element)
 
             cv2.imshow('img_input', img_input)
-            cv2.imshow('image_points_grid', cv2.applyColorMap(cv2.normalize(image_points_grid - np.min(image_points_grid.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U), cv2.COLORMAP_JET))
+            cv2.imshow('image_points_grid', cv2.applyColorMap(cv2.normalize(image_points_grid - np.min(image_points_grid.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U), cv2.COLORMAP_VIRIDIS))
+            cv2.imwrite('tmps/' + str(index) + 'image_points_grid.png', cv2.applyColorMap(cv2.normalize(image_points_grid - np.min(image_points_grid.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U), cv2.COLORMAP_VIRIDIS))
             
-            key = cv2.waitKey(100)
+            key = cv2.waitKey(5000)
             if key == ord('q'):
                 return
 
@@ -705,6 +716,7 @@ def main(point_cloud_array=point_cloud_array):
             print('Starting transform_occupancy_grid_to_points timer')
             start_time = time.time()
             final_points = k_raw.transform_occupancy_grid_to_points(occupancy_grid, threshold=0.5, skip=1)
+            # final_points = k_raw.transform_occupancy_grid_to_points_world_coords(occupancy_grid, threshold=0.5, skip=1)
             # final_points = k_raw.transform_occupancy_grid_to_grid_points(occupancy_grid, threshold=0.5, skip=1)
             
             # final_points = k_raw.transform_occupancy_grid_to_points_list_comp(occupancy_grid, threshold=0.001, skip=int(3))
@@ -732,8 +744,12 @@ def main(point_cloud_array=point_cloud_array):
 
             # vis.remove_geometry(pcd)
 
+            # x, y, z = velodyine_points[:,0].copy(), velodyine_points[:,1].copy(), velodyine_points[:,2].copy()
+            # final_points_o3d = velodyine_points.copy()
+
             x, y, z = final_points[:,0].copy(), final_points[:,1].copy(), final_points[:,2].copy()
             final_points_o3d = final_points.copy()
+            
             final_points_o3d[:,0] = y
             final_points_o3d[:,1] = x
             # points[:,2] = (z*10) + 10
@@ -746,6 +762,8 @@ def main(point_cloud_array=point_cloud_array):
             # vis.add_geometry(pcd)
             # vis.poll_events()
             # vis.update_renderer()
+
+            o3d.visualization.draw_geometries([pcd, ])
 
             time.sleep(5)
 
