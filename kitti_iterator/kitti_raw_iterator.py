@@ -338,6 +338,7 @@ class KittiRaw(Dataset):
 
         # image_points = cv2.resize(image_points, (w, h))
         image_points = np.zeros((h,w,3))
+        # image_points = np.ones((h,w,3)) * 0
         
         # ans, color = velo3d_2_camera2d_points(velodyine_points, self.R, self.T, P_rect, v_fov=(-24.9, 2.0), h_fov=(-45,45))
         ans, color = velo3d_2_camera2d_points(velodyine_points, self.R, self.T, P_rect, v_fov=v_fov, h_fov=h_fov, color_fn=color_fn)
@@ -345,7 +346,8 @@ class KittiRaw(Dataset):
         for index in range(len(ans[0])):
             img_x, img_y = [ans[0][index], ans[1][index]]
             if (0 <= img_x < w and 0 <= img_y < h):
-                image_points[int(img_y),int(img_x),:] = color[index]
+                if image_points[int(img_y),int(img_x),0] > color[index] or image_points[int(img_y),int(img_x),0] == 0:
+                    image_points[int(img_y),int(img_x),:] = color[index]
         
         return image_points
 
