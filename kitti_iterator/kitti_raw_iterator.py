@@ -14,6 +14,8 @@ import cv2
 import itertools
 import glob
 
+from .ground_removal import Processor
+
 from .helper import *
 
 # Z_OFFSET = 1.5
@@ -24,8 +26,8 @@ v_fov=(-24.9, 4.0)
 h_fov=(-85,85)
 # Sensor Setup: https://www.cvlibs.net/datasets/kitti/setup.php
 
-plot3d = False
-plot2d = True
+plot3d = True
+plot2d = False
 point_cloud_array = None
 if __name__ == '__main__':
     if plot3d:
@@ -127,7 +129,8 @@ class KittiRaw(Dataset):
         grid_size = (200.0, 200.0, 10.0),
         scale = 4.0,
         sigma = None,
-        gaus_n = 4
+        gaus_n = 4,
+        ground_removal=False
     ) -> None:
         self.gaus_n = gaus_n
         self.sigma = sigma
@@ -138,6 +141,12 @@ class KittiRaw(Dataset):
             scale = (scale, scale, scale)
         self.scale = scale
         self.grid_size = grid_size
+        self.ground_removal = ground_removal
+        
+        if self.ground_removal:
+            self.process = Processor(n_segments=70, n_bins=80, line_search_angle=0.3, max_dist_to_line=0.15,
+                sensor_height=1.73, max_start_height=0.5, long_threshold=8)
+
         self.occupancy_shape = list(map(lambda ind: int(self.grid_size[ind]*self.scale[ind]), range(len(self.grid_size))))
         # self.occupancy_mask_2d_shape = list(map(lambda i: int(i*self.scale), self.grid_size[:2]))
         self.occupancy_mask_2d_shape = list(map(lambda ind: int(self.grid_size[ind]*self.scale[ind]), range(2)))
@@ -530,6 +539,11 @@ class KittiRaw(Dataset):
         # velodyine_points = np.fromfile(velodyine_points, dtype=np.float32)
         # velodyine_points = np.reshape(velodyine_points, (velodyine_points.shape[0]//4, 4))
         velodyine_points = np.fromfile(velodyine_points, dtype=np.float32).reshape(-1, 4)[:,:3]
+
+        if self.ground_removal:
+            velodyine_points = velodyine_points * np.array([1.0,1.0,-1.0]) # revert the z axis
+            velodyine_points = self.process(velodyine_points)
+            velodyine_points = velodyine_points * np.array([1.0,1.0,-1.0]) # revert the z axis
         
         occupancy_grid_data = self.transform_points_to_occupancy_grid(velodyine_points)
 
@@ -621,11 +635,8 @@ def main(point_cloud_array=point_cloud_array):
     # grid_scale = (2.0, 2.0, 4.0)
     # grid_size = (138/grid_scale[0], 99/grid_scale[1], 22/grid_scale[2])
 
-    grid_scale = (3.0, 3.0, 3.0)
-    # grid_size = (138*2/grid_scale[0], 99/grid_scale[1], 7/grid_scale[2])
-    grid_size = (138*2/grid_scale[0], 99/grid_scale[1], 22/grid_scale[2])
-    grid_size = (502/grid_scale[0], 270/grid_scale[1], 14/grid_scale[2])
-    # 502, 270, 14
+    grid_scale = (5.0, 5.0, 5.0)
+    grid_size = (502/grid_scale[0], 182/grid_scale[1], 38/grid_scale[2])
 
     k_raw = KittiRaw(
         # kitti_raw_base_path="kitti_raw_mini",
@@ -635,7 +646,8 @@ def main(point_cloud_array=point_cloud_array):
         scale = grid_scale,
         # sigma = 1.0,
         sigma = None,
-        gaus_n=1
+        gaus_n=1,
+        ground_removal=True
     )
     
     print('Starting timer')
@@ -775,8 +787,8 @@ def main(point_cloud_array=point_cloud_array):
         vis.destroy_window()
 
 if __name__ == "__main__":
-    # main(None)
-    # exit()
+    main(None)
+    exit()
     if plot3d:
         image_loop_proc = Process(target=main, args=(point_cloud_array, ))
         image_loop_proc.start()

@@ -6,6 +6,7 @@ import os
 # Plotter Code
 ###
 #
+from PyQt5 import QtCore, QtGui, QtWidgets
 from pyqtgraph.Qt import QtCore, QtGui
 import pyqtgraph.opengl as gl
 import numpy as np
@@ -99,7 +100,8 @@ def start_graph(points_q):
     
     print("Setting up graph")
     global app, graph_region, mesh_region, w, g, d3, t
-    app = QtGui.QApplication([])
+    # app = QtGui.QApplication([])
+    app = QtWidgets.QApplication([])
     w = gl.GLViewWidget()
     w.resize(800, 600)
     w.opts['distance'] = 20
