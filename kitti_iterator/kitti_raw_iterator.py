@@ -27,7 +27,7 @@ h_fov=(-85,85)
 # Sensor Setup: https://www.cvlibs.net/datasets/kitti/setup.php
 
 plot3d = True
-plot2d = False
+plot2d = True
 point_cloud_array = None
 if __name__ == '__main__':
     if plot3d:
