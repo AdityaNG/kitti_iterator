@@ -3,7 +3,7 @@ import numpy as np
 import re
 import yaml
 import sys
-from loadCalibration import loadCalibrationCameraToPose
+from kitti_iterator.kitti_360.loadCalibration import loadCalibrationCameraToPose
 
 def readYAMLFile(fileName):
     '''make OpenCV YAML file compatible with python'''
