@@ -3,7 +3,7 @@ import numpy as np
 import re
 import yaml
 import sys
-from kitti360scripts.devkits.commons.loadCalibration import loadCalibrationCameraToPose
+from loadCalibration import loadCalibrationCameraToPose
 
 def readYAMLFile(fileName):
     '''make OpenCV YAML file compatible with python'''
@@ -15,7 +15,7 @@ def readYAMLFile(fileName):
         yamlFileOut = fin.read()
         myRe = re.compile(r":([^ ])")   # Add space after ":", if it doesn't exist. Python yaml requirement
         yamlFileOut = myRe.sub(r': \1', yamlFileOut)
-        ret = yaml.load(yamlFileOut)
+        ret = yaml.safe_load(yamlFileOut)
     return ret
 
 class Camera:
