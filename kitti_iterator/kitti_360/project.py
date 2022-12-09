@@ -204,7 +204,7 @@ class CameraFisheye(Camera):
         ''' Obtain K from CameraPerspective '''
         perspective_map = {2:0,3:1}
         perspectiveCam = CameraPerspective(self.root_dir,self.seq,perspective_map[self.cam_id])
-        return CameraPerspective.K
+        return perspectiveCam.K
 
 if __name__=="__main__":
     import cv2
