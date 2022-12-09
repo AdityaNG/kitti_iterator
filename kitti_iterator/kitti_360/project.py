@@ -202,7 +202,7 @@ class CameraFisheye(Camera):
     
     def fisheye2perspective(self):
         ''' Obtain K from CameraPerspective '''
-        perspective_map = {2:'00',3:'01'}
+        perspective_map = {2:0,3:1}
         perspectiveCam = CameraPerspective(self.root_dir,self.seq,perspective_map[self.cam_id])
         return CameraPerspective.K
 
