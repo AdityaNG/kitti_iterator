@@ -153,13 +153,15 @@ class CameraFisheye(Camera):
     def __init__(self, root_dir, seq='2013_05_28_drive_0009_sync', cam_id=2):
         # perspective camera ids: {0,1}, fisheye camera ids: {2,3}
         assert (cam_id==2 or cam_id==3)
-
+        perspective_map = {2:'00',3:'01'}
         pose_dir = os.path.join(root_dir, 'data_poses', seq)
         calib_dir = os.path.join(root_dir, 'calibration')
         self.pose_file = os.path.join(pose_dir, "poses.txt")
         self.intrinsic_file = os.path.join(calib_dir, 'image_%02d.yaml' % cam_id)
         fileCameraToPose = os.path.join(calib_dir, 'calib_cam_to_pose.txt')
+        filePerspectiveIntrinsic = os.path.join(calib_dir, 'perspective.txt')
         self.camToPose = loadCalibrationCameraToPose(fileCameraToPose)['image_%02d' % cam_id]
+        self.perspec = loadPerspectiveIntrinsic(fileCameraToPose)['P_rect_'+perspective_map[cam_id]]
         self.cam_id = cam_id
         super(CameraFisheye, self).__init__()
 
