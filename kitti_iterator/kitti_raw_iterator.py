@@ -34,7 +34,7 @@ h_fov=(-85,85)
 # Sensor Setup: https://www.cvlibs.net/datasets/kitti/setup.php
 
 plot3d = False
-plot2d = False
+plot2d = True
 point_cloud_array = None
 if __name__ == '__main__':
     if plot3d:
@@ -139,7 +139,8 @@ class KittiRaw(Dataset):
         gaus_n = 4,
         ground_removal=False,
         compute_trajectory=False,
-        invalidate_cache=True
+        invalidate_cache=True,
+        scale_factor=1.0, plot_3D_x=250, plot_3D_y=500, num_features=5000
     ) -> None:
         self.gaus_n = gaus_n
         self.sigma = sigma
@@ -182,25 +183,30 @@ class KittiRaw(Dataset):
         self.T = np.reshape(self.calib_velo_to_cam['T'], (3,1))
 
         self.K_00 = np.reshape(self.calib_cam_to_cam['K_00'], (3,3))
-        self.S_00 = np.reshape(self.calib_cam_to_cam['S_00'], (1,2))
+        self.S_00_unrect = np.reshape(self.calib_cam_to_cam['S_00'], (1,2))
+        self.S_00 = np.reshape(self.calib_cam_to_cam['S_rect_00'], (1,2))
+        
         self.D_00 = np.reshape(self.calib_cam_to_cam['D_00'], (1,5))
         self.R_00 = np.reshape(self.calib_cam_to_cam['R_00'], (3,3))
         self.T_00 = np.reshape(self.calib_cam_to_cam['T_00'], (3,1))
 
         self.K_01 = np.reshape(self.calib_cam_to_cam['K_01'], (3,3))
-        self.S_01 = np.reshape(self.calib_cam_to_cam['S_01'], (1,2))
+        self.S_01_unrect = np.reshape(self.calib_cam_to_cam['S_01'], (1,2))
+        self.S_01 = np.reshape(self.calib_cam_to_cam['S_rect_01'], (1,2))
         self.D_01 = np.reshape(self.calib_cam_to_cam['D_01'], (1,5))
         self.R_01 = np.reshape(self.calib_cam_to_cam['R_01'], (3,3))
         self.T_01 = np.reshape(self.calib_cam_to_cam['T_01'], (3,1))
 
         self.K_02 = np.reshape(self.calib_cam_to_cam['K_02'], (3,3))
-        self.S_02 = np.reshape(self.calib_cam_to_cam['S_02'], (1,2))
+        self.S_02_unrect = np.reshape(self.calib_cam_to_cam['S_02'], (1,2))
+        self.S_02 = np.reshape(self.calib_cam_to_cam['S_rect_02'], (1,2))
         self.D_02 = np.reshape(self.calib_cam_to_cam['D_02'], (1,5))
         self.R_02 = np.reshape(self.calib_cam_to_cam['R_02'], (3,3))
         self.T_02 = np.reshape(self.calib_cam_to_cam['T_02'], (3,1))
 
         self.K_03 = np.reshape(self.calib_cam_to_cam['K_03'], (3,3))
-        self.S_03 = np.reshape(self.calib_cam_to_cam['S_03'], (1,2))
+        self.S_03_unrect = np.reshape(self.calib_cam_to_cam['S_03'], (1,2))
+        self.S_03 = np.reshape(self.calib_cam_to_cam['S_rect_03'], (1,2))
         self.D_03 = np.reshape(self.calib_cam_to_cam['D_03'], (1,5))
         self.R_03 = np.reshape(self.calib_cam_to_cam['R_03'], (3,3))
         self.T_03 = np.reshape(self.calib_cam_to_cam['T_03'], (3,1))
@@ -241,7 +247,7 @@ class KittiRaw(Dataset):
 
         if self.compute_trajectory:
             if not os.path.exists(self.cached_trajectory_path) or invalidate_cache:
-                self.compute_slam()
+                self.compute_slam(scale_factor, plot_3D_x, plot_3D_y, num_features)
             else:
                 print("Loading trajectory from cache: ", self.cached_trajectory_path)
                 with open(self.cached_trajectory_path, 'rb') as handle:
@@ -267,7 +273,7 @@ class KittiRaw(Dataset):
         self.index += 1
         return data
 
-    def compute_slam(self, scale_factor=0.25, plot_3D_x=250, plot_3D_y=500,):
+    def compute_slam(self, scale_factor=0.25, plot_3D_x=250, plot_3D_y=500, num_features=2000):
         # from extras.pyslam.visual_odometry import VisualOdometry
         from .pyslam.visual_odometry import VisualOdometry
         # from .pyslam.visual_imu_gps_odometry import Visual_IMU_GPS_Odometry
@@ -281,16 +287,15 @@ class KittiRaw(Dataset):
         }
 
         cam = PinholeCamera(
-            round(self.w_00 * scale_factor),
-            round(self.h_00 * scale_factor), 
+            round(self.width * scale_factor),
+            round(self.height * scale_factor), 
             self.K_00[0,0] * scale_factor, #  cam_settings['Camera.fx']
             self.K_00[1,1] * scale_factor, #  cam_settings['Camera.fy']
             self.K_00[0,2] * scale_factor,
             self.K_00[1,2] * scale_factor,
             self.D_00, # self.DistCoef,
             10, # self.cam_settings['Camera.fps']
-        )
-        num_features=2000  # how many features do you want to detect and track?
+        )        
 
         # select your tracker configuration (see the file feature_tracker_configs.py) 
         # LK_SHI_TOMASI, LK_FAST
@@ -309,11 +314,12 @@ class KittiRaw(Dataset):
 
             image_data_frame = data_frame['image_00_raw']
 
-            image_data_frame_scaled = cv2.resize(image_data_frame, (round(self.w_00 * scale_factor), round(self.h_00 * scale_factor)))
+            image_data_frame_scaled = cv2.resize(image_data_frame, (round(self.width * scale_factor), round(self.height * scale_factor)))
             image_data_frame_scaled = cv2.cvtColor(image_data_frame_scaled, cv2.COLOR_RGB2GRAY)
 
-            print('image_data_frame_scaled.shape', image_data_frame_scaled.shape)
-            print('self.width * scale_factor, self.height * scale_factor,', self.w_00 * scale_factor, self.h_00 * scale_factor,)
+            # print('image_data_frame.shape', image_data_frame.shape)
+            # print('image_data_frame_scaled.shape', image_data_frame_scaled.shape)
+            # print('self.width * scale_factor, self.height * scale_factor,', self.height * scale_factor, self.width * scale_factor,)
 
             # cv2.imshow('img', image_data_frame_scaled)
             # cv2.waitKey()
@@ -459,7 +465,8 @@ class KittiRaw(Dataset):
         return final_points
 
     def transform_points_to_image_space(self, velodyine_points, roi, intrinsic_mat, R_cam, T_cam, P_rect, color_fn=depth_color):
-        x, y, w, h = roi
+        # x, y, w, h = roi
+        w, h = self.width, self.height
         # intrinsic_mat = intrinsic_mat
         intrinsic_mat = np.vstack((
             np.hstack((
@@ -473,6 +480,7 @@ class KittiRaw(Dataset):
         # image_points = np.ones((h,w,3)) * 0
         
         # ans, color = velo3d_2_camera2d_points(velodyine_points, self.R, self.T, P_rect, v_fov=(-24.9, 2.0), h_fov=(-45,45))
+        # ans, color = velo3d_2_camera2d_points(velodyine_points, self.R, self.T, P_rect, v_fov=v_fov, h_fov=h_fov, color_fn=color_fn)
         ans, color = velo3d_2_camera2d_points(velodyine_points, self.R, self.T, P_rect, v_fov=v_fov, h_fov=h_fov, color_fn=color_fn)
         
         for index in range(len(ans[0])):
@@ -670,6 +678,42 @@ class KittiRaw(Dataset):
         
         occupancy_grid_data = self.transform_points_to_occupancy_grid(velodyine_points)
 
+        P_rect = self.calib_cam_to_cam['P_rect_00'].reshape(3, 4)[:3,:3]
+        image_points = self.transform_points_to_image_space(velodyine_points, self.roi_00, self.K_00, self.R_00, self.T_00, P_rect, color_fn=depth_color)
+        image_points = cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+        dilatation_size = 3
+        dilation_shape = cv2.MORPH_ELLIPSE
+        element = cv2.getStructuringElement(dilation_shape, (2 * dilatation_size + 1, 2 * dilatation_size + 1),
+                                        (dilatation_size, dilatation_size))
+        depth_image_00 = cv2.dilate(image_points, element)
+
+        P_rect = self.calib_cam_to_cam['P_rect_01'].reshape(3, 4)[:3,:3]
+        image_points = self.transform_points_to_image_space(velodyine_points, self.roi_01, self.K_01, self.R_01, self.T_01, P_rect, color_fn=depth_color)
+        image_points = cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+        dilatation_size = 3
+        dilation_shape = cv2.MORPH_ELLIPSE
+        element = cv2.getStructuringElement(dilation_shape, (2 * dilatation_size + 1, 2 * dilatation_size + 1),
+                                        (dilatation_size, dilatation_size))
+        depth_image_01 = cv2.dilate(image_points, element)
+
+        P_rect = self.calib_cam_to_cam['P_rect_02'].reshape(3, 4)[:3,:3]
+        image_points = self.transform_points_to_image_space(velodyine_points, self.roi_02, self.K_02, self.R_02, self.T_02, P_rect, color_fn=depth_color)
+        image_points = cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+        dilatation_size = 3
+        dilation_shape = cv2.MORPH_ELLIPSE
+        element = cv2.getStructuringElement(dilation_shape, (2 * dilatation_size + 1, 2 * dilatation_size + 1),
+                                        (dilatation_size, dilatation_size))
+        depth_image_02 = cv2.dilate(image_points, element)
+
+        P_rect = self.calib_cam_to_cam['P_rect_03'].reshape(3, 4)[:3,:3]
+        image_points = self.transform_points_to_image_space(velodyine_points, self.roi_03, self.K_03, self.R_03, self.T_03, P_rect, color_fn=depth_color)
+        image_points = cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+        dilatation_size = 3
+        dilation_shape = cv2.MORPH_ELLIPSE
+        element = cv2.getStructuringElement(dilation_shape, (2 * dilatation_size + 1, 2 * dilatation_size + 1),
+                                        (dilatation_size, dilatation_size))
+        depth_image_03 = cv2.dilate(image_points, element)
+
         data = {
             'image_00': image_00, 
             'image_01': image_01, 
@@ -705,7 +749,12 @@ class KittiRaw(Dataset):
             'velodyine_points': velodyine_points, 
             'occupancy_grid': occupancy_grid_data['occupancy_grid'],
             'occupancy_mask_2d': occupancy_grid_data['occupancy_mask_2d'],
-            'velodyine_points_camera': occupancy_grid_data['velodyine_points_camera']
+            'velodyine_points_camera': occupancy_grid_data['velodyine_points_camera'],
+
+            'depth_image_00': depth_image_00,
+            'depth_image_01': depth_image_01,
+            'depth_image_02': depth_image_02,
+            'depth_image_03': depth_image_03,
         }
         for key in self.transform:
             data[key] = self.transform[key](data[key])
@@ -744,12 +793,19 @@ def get_kitti_raw(**kwargs):
 
 def main(point_cloud_array=point_cloud_array):
 
-    import open3d as o3d
-    k_raw = KittiRaw(
-        compute_trajectory=True
-    )
+    # import open3d as o3d
+    # k_raw = KittiRaw(
+    #     kitti_raw_base_path=os.path.expanduser("~/Datasets/kitti/raw/"),
+    #     date_folder="2011_09_26",
+    #     sub_folder="2011_09_26_drive_0002_sync",
+    #     compute_trajectory=True,
+    #     scale_factor=1.0,
+    #     num_features=5000,
+    #     invalidate_cache=True
+    # )
 
-    return
+    # return
+
     import open3d as o3d
 
     if plot3d:
@@ -776,7 +832,7 @@ def main(point_cloud_array=point_cloud_array):
         # sigma = 1.0,
         sigma = None,
         gaus_n=1,
-        ground_removal=True
+        ground_removal=False
     )
     
     print('Starting timer')
@@ -797,7 +853,7 @@ def main(point_cloud_array=point_cloud_array):
     print("Found", len(k_raw), "images ")
     for index in range(len(k_raw)):
         data = k_raw[index]
-        image_02 = data['image_02']
+        image_02 = data['image_02_raw']
         velodyine_points = data['velodyine_points']
         velodyine_points_camera = data['velodyine_points_camera']
         occupancy_mask_2d = data['occupancy_mask_2d']
@@ -812,25 +868,37 @@ def main(point_cloud_array=point_cloud_array):
         calib_velo_to_cam = data['calib_velo_to_cam']
 
         P_rect = calib_cam_to_cam['P_rect' + img_id].reshape(3, 4)[:3,:3]
-
+        # P_cam = calib_cam_to_cam['P' + img_id].reshape(3, 4)[:3,:3]
+        R_rect = calib_cam_to_cam['R_rect' + img_id]
+        K = data['K'+img_id]
         
         if plot2d:
-            x, y, w, h = roi
+            # x, y, w, h = roi
+            w, h = k_raw.width, k_raw.height
             # img_input = data['image'+img_id+'_raw']
-            img_input = data['image'+img_id]
+            img_input = data['image'+img_id + '_raw']
+            print('img_input.shape', img_input.shape)
             img_input = cv2.resize(img_input, (w, h))
+            print('img_input.shape', img_input.shape)
+            print('img_input.dtype', img_input.dtype)
             
-            image_points = k_raw.transform_points_to_image_space(velodyine_points, roi, data['K'+img_id], R_cam, T_cam, P_rect, color_fn=depth_color)
+            # image_points = k_raw.transform_points_to_image_space(velodyine_points, roi, data['K'+img_id], R_cam, T_cam, P_rect, color_fn=depth_color)
+            image_points = k_raw.transform_points_to_image_space(velodyine_points, roi, K, R_cam, T_cam, P_rect, color_fn=depth_color)
+            print('image_points.shape', image_points.shape)
+            print('image_points.dtype', image_points.dtype)
             # image_points = k_raw.transform_occupancy_grid_to_image_space(occupancy_grid, roi, data['K'+img_id], R_cam, T_cam, P_rect)
-            
-            image_points = cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-            # image_points = cv2.addWeighted(image_points, 0.5, img_input, 0.1, 0.0)
+        
 
-            dilatation_size = 3
+            image_points = cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+
+
+            dilatation_size = 4
             dilation_shape = cv2.MORPH_ELLIPSE
             element = cv2.getStructuringElement(dilation_shape, (2 * dilatation_size + 1, 2 * dilatation_size + 1),
                                             (dilatation_size, dilatation_size))
             image_points_gt = cv2.dilate(image_points, element)
+
+            image_overlay = cv2.addWeighted(image_points_gt.astype(np.uint8), 0.5, img_input, 0.5, 0.0)
 
             cv2.imshow('img_input', img_input)
             cv2.imwrite('tmps/' + str(index) + 'img_input.png', img_input)
@@ -843,10 +911,20 @@ def main(point_cloud_array=point_cloud_array):
                                             (dilatation_size, dilatation_size))
             image_points_grid = cv2.dilate(image_points, element)
 
-            cv2.imshow('img_input', img_input)
-            cv2.imshow('image_points_grid', cv2.applyColorMap(cv2.normalize(image_points_grid - np.min(image_points_grid.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U), cv2.COLORMAP_VIRIDIS))
+            # print("data['depth_image'].shape", data['depth_image'].shape)
+            # print("data['depth_image'].dtype", data['depth_image'].dtype)
+            cv2.imshow('depth_image_00', data['depth_image_00'])
+            cv2.imshow('depth_image_01', data['depth_image_01'])
+            cv2.imshow('depth_image_02', data['depth_image_02'])
+            cv2.imshow('depth_image_03', data['depth_image_03'])
+            # cv2.imshow('img_input', img_input)
+            # cv2.imshow('image_overlay', image_overlay)
+            
+            # cv2.imshow('image_points_grid', cv2.applyColorMap(cv2.normalize(image_points_grid - np.min(image_points_grid.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U), cv2.COLORMAP_VIRIDIS))
             cv2.imwrite('tmps/' + str(index) + 'image_points_grid.png', cv2.applyColorMap(cv2.normalize(image_points_grid - np.min(image_points_grid.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U), cv2.COLORMAP_VIRIDIS))
             
+            print(compute_errors(img_input, image_points_grid))
+
             key = cv2.waitKey(5000)
             if key == ord('q'):
                 return
