@@ -1,23 +1,30 @@
+import sys
 import os
+import pathlib
+
 from multiprocessing.pool import Pool
 
 import time
 import yaml
 import numpy as np
+import pandas as pd
 import scipy
 
 from torch.utils.data import Dataset
 from torch.multiprocessing import Process, Queue, set_start_method
 import torch
 
+import pickle
 import cv2
 import itertools
 import glob
+import tqdm
 
 from .ground_removal import Processor
 
 from .helper import *
 
+TRAJECTORY_CACHE_DIR = ".trajectory_cache"
 # Z_OFFSET = 1.5
 # Z_OFFSET = 3.0
 # Z_OFFSET = 2.5
@@ -126,11 +133,13 @@ class KittiRaw(Dataset):
         date_folder="2011_09_26",
         sub_folder="2011_09_26_drive_0001_sync",
         transform=dict(),
-        grid_size = (200.0, 200.0, 10.0),
-        scale = 4.0,
+        grid_size = (2.0, 2.0, 2.0),
+        scale = 1.0,
         sigma = None,
         gaus_n = 4,
-        ground_removal=False
+        ground_removal=False,
+        compute_trajectory=False,
+        invalidate_cache=True
     ) -> None:
         self.gaus_n = gaus_n
         self.sigma = sigma
@@ -197,6 +206,7 @@ class KittiRaw(Dataset):
         self.T_03 = np.reshape(self.calib_cam_to_cam['T_03'], (3,1))
 
         self.w, self.h = list(map(int, (self.S_00[0][0], self.S_00[0][1])))
+        self.width, self.height = list(map(int, (self.S_00[0][0], self.S_00[0][1])))
         self.new_K_00, self.roi_00 = cv2.getOptimalNewCameraMatrix(self.K_00, self.D_00, (self.w, self.h), 1, (self.w, self.h))
         self.x_00, self.y_00, self.w_00, self.h_00 = self.roi_00
 
@@ -221,6 +231,28 @@ class KittiRaw(Dataset):
         self.img_list = list(map(lambda x: x.split(".png")[0], self.img_list))
         self.index = 0
 
+        self.frame_count = len(self)
+
+        self.compute_trajectory = compute_trajectory
+
+        cached_trajectory_folder = os.path.join(self.raw_data_path, TRAJECTORY_CACHE_DIR)
+        os.makedirs(cached_trajectory_folder, exist_ok=True)
+        self.cached_trajectory_path = os.path.join(cached_trajectory_folder, os.path.basename(self.raw_data_path) + ".pkl")        
+
+        if self.compute_trajectory:
+            if not os.path.exists(self.cached_trajectory_path) or invalidate_cache:
+                self.compute_slam()
+            else:
+                print("Loading trajectory from cache: ", self.cached_trajectory_path)
+                with open(self.cached_trajectory_path, 'rb') as handle:
+                    self.trajectory = pickle.load(handle)
+
+                # self.trajectory = pd.read_csv(self.cached_trajectory_path)
+        else: 
+            self.trajectory = pd.DataFrame({
+                'x':[], 'y':[], 'z': [], 'rot': []
+            })
+
     def __len__(self):
         return len(self.img_list)
 
@@ -234,6 +266,97 @@ class KittiRaw(Dataset):
         data = self[self.index]
         self.index += 1
         return data
+
+    def compute_slam(self, scale_factor=0.25, enable_plot=False, plot_3D_x=250, plot_3D_y=500,):
+        # from extras.pyslam.visual_odometry import VisualOdometry
+        from .pyslam.visual_odometry import VisualOdometry
+        # from .pyslam.visual_imu_gps_odometry import Visual_IMU_GPS_Odometry
+        # from .pyslam.visual_odometry import VisualOdometry
+        from .pyslam.camera import PinholeCamera
+        from .pyslam.feature_tracker_configs import FeatureTrackerConfigs
+        from .pyslam.feature_tracker import feature_tracker_factory
+
+        self.trajectory = {
+            'x':[], 'y':[], 'z': [], 'rot': []
+        }
+
+        cam = PinholeCamera(
+            round(self.w_00 * scale_factor),
+            round(self.h_00 * scale_factor), 
+            self.K_00[0,0] * scale_factor, #  cam_settings['Camera.fx']
+            self.K_00[1,1] * scale_factor, #  cam_settings['Camera.fy']
+            self.K_00[0,2] * scale_factor,
+            self.K_00[1,2] * scale_factor,
+            self.D_00, # self.DistCoef,
+            10, # self.cam_settings['Camera.fps']
+        )
+        num_features=2000  # how many features do you want to detect and track?
+
+        # select your tracker configuration (see the file feature_tracker_configs.py) 
+        # LK_SHI_TOMASI, LK_FAST
+        # SHI_TOMASI_ORB, FAST_ORB, ORB, BRISK, AKAZE, FAST_FREAK, SIFT, ROOT_SIFT, SURF, SUPERPOINT, FAST_TFEAT
+        tracker_config = FeatureTrackerConfigs.LK_SHI_TOMASI
+        tracker_config['num_features'] = num_features
+        
+        feature_tracker = feature_tracker_factory(**tracker_config)
+        print(feature_tracker)
+        # create visual odometry object 
+        self.vo = VisualOdometry(cam, None, feature_tracker)
+        print("Computing Trajectory")
+        plot_3D = np.zeros((plot_3D_x, plot_3D_y, 3))
+        for img_id in tqdm.tqdm(range(0, self.frame_count, 1)):
+            data_frame = self.__getitem__(img_id)
+
+            image_data_frame = data_frame['image_00_raw']
+
+            image_data_frame_scaled = cv2.resize(image_data_frame, (round(self.w_00 * scale_factor), round(self.h_00 * scale_factor)))
+            image_data_frame_scaled = cv2.cvtColor(image_data_frame_scaled, cv2.COLOR_RGB2GRAY)
+
+            print('image_data_frame_scaled.shape', image_data_frame_scaled.shape)
+            print('self.width * scale_factor, self.height * scale_factor,', self.w_00 * scale_factor, self.h_00 * scale_factor,)
+
+            # cv2.imshow('img', image_data_frame_scaled)
+            # cv2.waitKey()
+
+            self.vo.track(image_data_frame_scaled, img_id)
+            
+            if img_id>2:
+                x, y, z = self.vo.traj3d_est[-1]
+                rot = np.array(self.vo.cur_R, copy=True)
+            else:
+                # x, y, z = [0.0], [0.0], [0.0]
+                x, y, z = 0.0, 0.0, 0.0
+                rot = np.eye(3,3)
+
+            if type(x)!=float:
+                x = float(x[0])
+            if type(y)!=float:
+                y = float(y[0])
+            if type(z)!=float:
+                z = float(z[0])
+
+            self.trajectory['x'] += [x]
+            self.trajectory['y'] += [y]
+            self.trajectory['z'] += [z]
+            self.trajectory['rot'] += [rot]
+
+            if plot2d:
+                p3x = int(x / 10 + plot_3D_x//2)
+                p3y = int(z / 10 + plot_3D_y//2)
+                if p3x in range(0, plot_3D_x) and p3y in range(0, plot_3D_y):
+                    plot_3D = cv2.circle(plot_3D, (p3y, p3x), 2, (0,255,0), 1)
+
+            if plot2d:
+                cv2.imshow('plot_3D', plot_3D)
+                cv2.imshow('Camera', self.vo.draw_img)
+                key = cv2.waitKey(1)
+                if key == ord('q'):
+                    break
+
+        self.trajectory = pd.DataFrame(self.trajectory)
+        # self.trajectory.to_csv(self.cached_trajectory_p]ath, index=False)
+        with open(self.cached_trajectory_path, 'wb') as handle:
+            pickle.dump(self.trajectory, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     def transform_occupancy_grid_to_points_serial(self, occupancy_grid, threshold=0.5):
         occupancy_grid = occupancy_grid.squeeze()
@@ -620,7 +743,13 @@ def get_kitti_raw(**kwargs):
     return kitti_raw
 
 def main(point_cloud_array=point_cloud_array):
-    import tqdm
+
+    import open3d as o3d
+    k_raw = KittiRaw(
+        compute_trajectory=True
+    )
+
+    return
     import open3d as o3d
 
     if plot3d:

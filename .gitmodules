@@ -1,0 +1,3 @@
+[submodule "kitti_iterator/pyslam"]
+	path = kitti_iterator/pyslam
+	url = https://github.com/PW22-SBN-01/pyslam
