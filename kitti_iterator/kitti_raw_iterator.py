@@ -33,8 +33,8 @@ v_fov=(-24.9, 4.0)
 h_fov=(-85,85)
 # Sensor Setup: https://www.cvlibs.net/datasets/kitti/setup.php
 
-plot3d = True
-plot2d = True
+plot3d = False
+plot2d = False
 point_cloud_array = None
 if __name__ == '__main__':
     if plot3d:
@@ -267,7 +267,7 @@ class KittiRaw(Dataset):
         self.index += 1
         return data
 
-    def compute_slam(self, scale_factor=0.25, enable_plot=False, plot_3D_x=250, plot_3D_y=500,):
+    def compute_slam(self, scale_factor=0.25, plot_3D_x=250, plot_3D_y=500,):
         # from extras.pyslam.visual_odometry import VisualOdometry
         from .pyslam.visual_odometry import VisualOdometry
         # from .pyslam.visual_imu_gps_odometry import Visual_IMU_GPS_Odometry
