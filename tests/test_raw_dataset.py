@@ -9,7 +9,7 @@ def test_kitti_raw():
         sub_folder="2011_09_26_drive_0001_sync"
     )
     for row in raw_iter:
-        assert len(row) == 31
+        assert len(row) == 35
         image_00 = row['image_00']
         image_01 = row['image_01']
         image_02 = row['image_02']
@@ -22,3 +22,17 @@ def test_kitti_raw():
         assert type(image_03) == np.ndarray
         assert type(velodyine_points) == np.ndarray
         assert type(occupancy_grid) == np.ndarray
+
+
+def test_trajectory():
+    from kitti_iterator import kitti_raw_iterator
+    import numpy as np
+    import pandas as pd
+    raw_iter = kitti_raw_iterator.KittiRaw(
+        kitti_raw_base_path="kitti_raw_mini",
+        date_folder="2011_09_26",
+        sub_folder="2011_09_26_drive_0001_sync",
+        compute_trajectory=True,
+        invalidate_cache=True,
+    )
+    
