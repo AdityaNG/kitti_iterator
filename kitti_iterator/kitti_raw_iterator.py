@@ -34,7 +34,7 @@ h_fov=(-85,85)
 # Sensor Setup: https://www.cvlibs.net/datasets/kitti/setup.php
 
 plot3d = False
-plot2d = True
+plot2d = False
 point_cloud_array = None
 if __name__ == '__main__':
     if plot3d:
@@ -680,7 +680,7 @@ class KittiRaw(Dataset):
 
         P_rect = self.calib_cam_to_cam['P_rect_00'].reshape(3, 4)[:3,:3]
         image_points = self.transform_points_to_image_space(velodyine_points, self.roi_00, self.K_00, self.R_00, self.T_00, P_rect, color_fn=depth_color)
-        image_points = cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+        image_points = cv2.normalize(image_points - np.min(image_points.flatten()), None, 0.0, 1.0, norm_type=cv2.NORM_MINMAX)
         dilatation_size = 3
         dilation_shape = cv2.MORPH_ELLIPSE
         element = cv2.getStructuringElement(dilation_shape, (2 * dilatation_size + 1, 2 * dilatation_size + 1),
@@ -689,7 +689,7 @@ class KittiRaw(Dataset):
 
         P_rect = self.calib_cam_to_cam['P_rect_01'].reshape(3, 4)[:3,:3]
         image_points = self.transform_points_to_image_space(velodyine_points, self.roi_01, self.K_01, self.R_01, self.T_01, P_rect, color_fn=depth_color)
-        image_points = cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+        image_points = cv2.normalize(image_points - np.min(image_points.flatten()), None, 0.0, 1.0, norm_type=cv2.NORM_MINMAX)
         dilatation_size = 3
         dilation_shape = cv2.MORPH_ELLIPSE
         element = cv2.getStructuringElement(dilation_shape, (2 * dilatation_size + 1, 2 * dilatation_size + 1),
@@ -698,7 +698,7 @@ class KittiRaw(Dataset):
 
         P_rect = self.calib_cam_to_cam['P_rect_02'].reshape(3, 4)[:3,:3]
         image_points = self.transform_points_to_image_space(velodyine_points, self.roi_02, self.K_02, self.R_02, self.T_02, P_rect, color_fn=depth_color)
-        image_points = cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+        image_points = cv2.normalize(image_points - np.min(image_points.flatten()), None, 0.0, 1.0, norm_type=cv2.NORM_MINMAX)
         dilatation_size = 3
         dilation_shape = cv2.MORPH_ELLIPSE
         element = cv2.getStructuringElement(dilation_shape, (2 * dilatation_size + 1, 2 * dilatation_size + 1),
@@ -707,7 +707,7 @@ class KittiRaw(Dataset):
 
         P_rect = self.calib_cam_to_cam['P_rect_03'].reshape(3, 4)[:3,:3]
         image_points = self.transform_points_to_image_space(velodyine_points, self.roi_03, self.K_03, self.R_03, self.T_03, P_rect, color_fn=depth_color)
-        image_points = cv2.normalize(image_points - np.min(image_points.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+        image_points = cv2.normalize(image_points - np.min(image_points.flatten()), None, 0.0, 1.0, norm_type=cv2.NORM_MINMAX)
         dilatation_size = 3
         dilation_shape = cv2.MORPH_ELLIPSE
         element = cv2.getStructuringElement(dilation_shape, (2 * dilatation_size + 1, 2 * dilatation_size + 1),
@@ -924,6 +924,7 @@ def main(point_cloud_array=point_cloud_array):
             cv2.imwrite('tmps/' + str(index) + 'image_points_grid.png', cv2.applyColorMap(cv2.normalize(image_points_grid - np.min(image_points_grid.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U), cv2.COLORMAP_VIRIDIS))
             
             print(compute_errors(img_input, image_points_grid))
+            print(compute_errors(data['depth_image_00'], data['depth_image_00']))
 
             key = cv2.waitKey(5000)
             if key == ord('q'):
