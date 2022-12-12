@@ -5,7 +5,7 @@ from setuptools import find_packages
 def load(path):
     return open(path, 'r').read()
 
-kitti_iterator_version = '1.3.0'
+kitti_iterator_version = '1.4.0'
 
 classifiers = [
     "Development Status :: 5 - Production/Stable",
