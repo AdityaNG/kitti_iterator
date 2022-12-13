@@ -241,11 +241,11 @@ class KittiRaw(Dataset):
 
         self.compute_trajectory = compute_trajectory
 
-        cached_trajectory_folder = os.path.join(self.raw_data_path, TRAJECTORY_CACHE_DIR)
-        os.makedirs(cached_trajectory_folder, exist_ok=True)
-        self.cached_trajectory_path = os.path.join(cached_trajectory_folder, os.path.basename(self.raw_data_path) + ".pkl")        
-
         if self.compute_trajectory:
+            cached_trajectory_folder = os.path.join(self.raw_data_path, TRAJECTORY_CACHE_DIR)
+            os.makedirs(cached_trajectory_folder, exist_ok=True)
+            self.cached_trajectory_path = os.path.join(cached_trajectory_folder, os.path.basename(self.raw_data_path) + ".pkl")
+            
             if not os.path.exists(self.cached_trajectory_path) or invalidate_cache:
                 self.compute_slam(scale_factor, plot_3D_x, plot_3D_y, num_features)
             else:
