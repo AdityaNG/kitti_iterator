@@ -249,6 +249,7 @@ class KittiDepth(KittiRaw):
 
             'occupancy_grid': occupancy_grid,
             'velodyine_points': velodyine_points,
+            'voxel_grid': voxel_grid,
 
             'depth_image_02': depth_02_raw,
             'depth_image_03': depth_03_raw,
@@ -353,6 +354,8 @@ def main(point_cloud_array=point_cloud_array):
         # velodyine_points_camera = data['velodyine_points_camera']
         # occupancy_mask_2d = data['occupancy_mask_2d']
         occupancy_grid  = data['occupancy_grid']
+        voxel_grid  = data['voxel_grid']
+        
         img_id = '_00'
         roi = data['roi'+img_id]
         R_cam = data['R'+img_id]
@@ -408,18 +411,20 @@ def main(point_cloud_array=point_cloud_array):
 
             # print("data['depth_image'].shape", data['depth_image'].shape)
             # print("data['depth_image'].dtype", data['depth_image'].dtype)
-            cv2.imshow('depth_image_00', data['depth_image_00'])
-            cv2.imshow('depth_image_01', data['depth_image_01'])
-            cv2.imshow('depth_image_02', data['depth_image_02'])
-            cv2.imshow('depth_image_03', data['depth_image_03'])
+            
+            # cv2.imshow('depth_image_00', data['depth_image_00'])
+            # cv2.imshow('depth_image_01', data['depth_image_01'])
+            # cv2.imshow('depth_image_02', data['depth_image_02'])
+            # cv2.imshow('depth_image_03', data['depth_image_03'])
+
             # cv2.imshow('img_input', img_input)
             # cv2.imshow('image_overlay', image_overlay)
             
             # cv2.imshow('image_points_grid', cv2.applyColorMap(cv2.normalize(image_points_grid - np.min(image_points_grid.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U), cv2.COLORMAP_VIRIDIS))
             cv2.imwrite('tmps/' + str(index) + 'image_points_grid.png', cv2.applyColorMap(cv2.normalize(image_points_grid - np.min(image_points_grid.flatten()), None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U), cv2.COLORMAP_VIRIDIS))
             
-            print(compute_errors(img_input, image_points_grid))
-            print(compute_errors(data['depth_image_00'], data['depth_image_00']))
+            # print(compute_errors(img_input, image_points_grid))
+            # print(compute_errors(data['depth_image_00'], data['depth_image_00']))
 
             key = cv2.waitKey(5000)
             if key == ord('q'):
@@ -432,7 +437,8 @@ def main(point_cloud_array=point_cloud_array):
 
             print('Starting transform_occupancy_grid_to_points timer')
             start_time = time.time()
-            final_points = k_raw.transform_occupancy_grid_to_points(occupancy_grid, threshold=0.5, skip=1)
+            # final_points = k_raw.transform_occupancy_grid_to_points(occupancy_grid, threshold=0.5, skip=1)
+            final_points = voxel_grid
             # final_points = k_raw.transform_occupancy_grid_to_points_world_coords(occupancy_grid, threshold=0.5, skip=1)
             # final_points = k_raw.transform_occupancy_grid_to_grid_points(occupancy_grid, threshold=0.5, skip=1)
             
