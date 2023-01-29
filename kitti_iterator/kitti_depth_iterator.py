@@ -37,8 +37,8 @@ if __name__ == '__main__':
 class KittiDepth(KittiRaw):
 
     def __init__(self, 
-        kitti_depth_base_path="/home/shared/kitti_depth/",
-        kitti_raw_base_path="/home/shared/Kitti",
+        kitti_depth_base_path="kitti_depth_mini",
+        kitti_raw_base_path="kitti_raw_mini",
         date_folder="2011_09_26",
         sub_folder="2011_09_26_drive_0001_sync",
         transform=dict(),
@@ -73,12 +73,29 @@ class KittiDepth(KittiRaw):
         self.img_list = list(map(lambda x: x.split(".png")[0], self.img_list))
         self.index = 0
 
+        print(self.depth_02_path)
+        print(self.img_list)
+
         self.frame_count = len(self)
 
-        self.intrinsics = self.o3d.camera.PinholeCameraIntrinsic(
+        self.intrinsics = o3d.camera.PinholeCameraIntrinsic(
             width=self.width, height=self.height,
-            intrinsic_matrix=self.intrinsic_mat
+            intrinsic_matrix=self.intrinsic_mat[:3,:3]
         ) 
+
+    def transform_voxel_grid_to_occupancy_grid(self, voxel_grid):
+        occupancy_grid = np.zeros(self.occupancy_shape, dtype=bool)
+        for i in range(voxel_grid.shape[0]):
+            y, z, x = voxel_grid[i, :]
+            if (
+                0 <= x < self.occupancy_shape[0] and
+                0 <= y < self.occupancy_shape[1] and
+                0 <= z < self.occupancy_shape[2]
+            ):
+                occupancy_grid[x,y,z] = True
+            else:
+                pass # Warning
+        return occupancy_grid
 
     def __getitem__(self, index):
         id = self.img_list[index]
@@ -138,13 +155,29 @@ class KittiDepth(KittiRaw):
             o3d.geometry.Image(image_02_raw), o3d.geometry.Image(depth_02_raw),
             convert_rgb_to_intensity=False
         )
-        occupancy_grid_pcd = self.o3d.geometry.PointCloud.create_from_rgbd_image(
+        occupancy_grid_pcd = o3d.geometry.PointCloud.create_from_rgbd_image(
             rgbd, self.intrinsics
         )
         
         occupancy_grid_pcd.remove_non_finite_points()
         occupancy_grid_data = o3d.geometry.VoxelGrid.create_from_point_cloud(occupancy_grid_pcd,
-                                                                voxel_size=0.0005)
+                                                                voxel_size=0.00000075)
+
+        voxels = occupancy_grid_data.get_voxels()  # returns list of voxels
+        voxel_grid = np.stack(list(vx.grid_index for vx in voxels))
+        voxel_grid_colors = np.stack(list(vx.color for vx in voxels))
+
+        print('voxels range', occupancy_grid_data.get_min_bound(), occupancy_grid_data.get_max_bound())
+        print('voxel_grid range', np.min(voxel_grid), np.max(voxel_grid))
+        print('voxel_grid_x range', np.min(voxel_grid[:,0]), np.max(voxel_grid[:,0]))
+        print('voxel_grid_y range', np.min(voxel_grid[:,1]), np.max(voxel_grid[:,1]))
+        print('voxel_grid_z range', np.min(voxel_grid[:,2]), np.max(voxel_grid[:,2]))
+        print('voxel_size, origin', occupancy_grid_data.voxel_size, occupancy_grid_data.origin)
+
+        occupancy_grid = self.transform_voxel_grid_to_occupancy_grid(voxel_grid)
+
+        print(occupancy_grid.shape)
+
 
         # P_rect = self.calib_cam_to_cam['P_rect_00'].reshape(3, 4)[:3,:3]
         # image_points = self.transform_points_to_image_space(velodyine_points, self.roi_00, self.K_00, self.R_00, self.T_00, P_rect, color_fn=depth_color)
@@ -214,7 +247,8 @@ class KittiDepth(KittiRaw):
             'calib_imu_to_velo': self.calib_imu_to_velo,
             'calib_velo_to_cam': self.calib_velo_to_cam,
 
-            'occupancy_grid': occupancy_grid_data,
+            'occupancy_grid': occupancy_grid,
+            'velodyine_points': velodyine_points,
 
             'depth_image_02': depth_02_raw,
             'depth_image_03': depth_03_raw,
@@ -284,7 +318,7 @@ def main(point_cloud_array=point_cloud_array):
     grid_scale = (5.0, 5.0, 5.0)
     grid_size = (502/grid_scale[0], 182/grid_scale[1], 38/grid_scale[2])
 
-    k_raw = KittiRaw(
+    k_raw = KittiDepth(
         # kitti_raw_base_path="kitti_raw_mini",
         # date_folder="2011_09_26",
         # sub_folder="2011_09_26_drive_0001_sync",
@@ -316,8 +350,8 @@ def main(point_cloud_array=point_cloud_array):
         data = k_raw[index]
         image_02 = data['image_02_raw']
         velodyine_points = data['velodyine_points']
-        velodyine_points_camera = data['velodyine_points_camera']
-        occupancy_mask_2d = data['occupancy_mask_2d']
+        # velodyine_points_camera = data['velodyine_points_camera']
+        # occupancy_mask_2d = data['occupancy_mask_2d']
         occupancy_grid  = data['occupancy_grid']
         img_id = '_00'
         roi = data['roi'+img_id]
