@@ -258,14 +258,24 @@ class KittiDepth(KittiRaw):
             data[key] = self.transform[key](data[key])
         return data
 
-def get_kitti_tree(kitti_raw_base_path):
-    date_folder_list = list(filter(os.path.isdir, glob.glob(os.path.join(kitti_raw_base_path, '*'))))
-    date_folder_list = list(filter(lambda i: len(i.split('_'))==3, date_folder_list))
+def get_kitti_tree(kitti_depth_base_path):
+    date_folder_list = list(filter(os.path.isdir, glob.glob(os.path.join(kitti_depth_base_path, 'train', '*'))))
+    # print('date_folder_list', date_folder_list)
+    date_folder_list = list(filter(lambda i: len(i.split('_'))==7, date_folder_list))
     kitti_tree = dict()
     for date_folder in date_folder_list:
         date_id = date_folder.split('/')[-1]
+        date_id = date_id.split('_drive_')[0]
+
+        def folder_filter(folder):
+            fold_date_id = folder.split('/')[-1]
+            fold_date_id = fold_date_id.split('_drive_')[0]
+            return (
+                os.path.isdir(folder) and
+                fold_date_id == date_id
+            )
         # print(date_id)
-        sub_folder_list = list(filter(os.path.isdir, glob.glob(os.path.join(date_folder, '*'))))
+        sub_folder_list = list(filter(folder_filter, glob.glob(os.path.join(kitti_depth_base_path, 'train', '*')) ))
         sub_folder_list = list(filter(lambda i: len(i.split('/')[-1].split('_'))==6, sub_folder_list))
         sub_folder_list = list(map(lambda i: i.split('/')[-1], sub_folder_list))
 
@@ -273,15 +283,17 @@ def get_kitti_tree(kitti_raw_base_path):
         # print(sub_folder_list)
     return kitti_tree
 
-def get_kitti_raw(**kwargs):
+def get_kitti_depth(**kwargs):
     kitti_raw_base_path=kwargs['kitti_raw_base_path']
-    kitti_tree = get_kitti_tree(kitti_raw_base_path)
+    kitti_depth_base_path=kwargs['kitti_depth_base_path']
+    kitti_tree = get_kitti_tree(kitti_depth_base_path)
     kitti_raw = []
     for date_folder in kitti_tree:
         for sub_folder in kitti_tree[date_folder]:
             kitti_raw.append(
-                KittiRaw(
+                KittiDepth(
                     # kitti_raw_base_path=kitti_raw_base_path,
+                    # kitti_depth_base_path=kitti_depth_base_path,
                     date_folder=date_folder,
                     sub_folder=sub_folder,
                     **kwargs
@@ -290,6 +302,14 @@ def get_kitti_raw(**kwargs):
     return kitti_raw
 
 def main(point_cloud_array=point_cloud_array):
+
+    # print(get_kitti_tree('/home/shared/kitti_depth/'))
+    print(get_kitti_depth(
+        kitti_raw_base_path='/home/shared/Kitti',
+        kitti_depth_base_path='/home/shared/kitti_depth/'
+    ))
+
+    exit()
 
     # import open3d as o3d
     # k_raw = KittiRaw(
