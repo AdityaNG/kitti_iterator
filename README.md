@@ -1,8 +1,8 @@
 # KITTI Iterator
 
-![pylint workflow](https://github.com/AdityaNG/kitti_iterator/actions/workflows/pylint.yml/badge.svg)
-![pypi workflow](https://github.com/AdityaNG/kitti_iterator/actions/workflows/pypi.yml/badge.svg)
-![pytest workflow](https://github.com/AdityaNG/kitti_iterator/actions/workflows/pytest.yml/badge.svg)
+![pylint workflow](https://github.com/PW22-SBN-01/kitti_iterator/actions/workflows/pylint.yml/badge.svg)
+![pypi workflow](https://github.com/PW22-SBN-01/kitti_iterator/actions/workflows/pypi.yml/badge.svg)
+![pytest workflow](https://github.com/PW22-SBN-01/kitti_iterator/actions/workflows/pytest.yml/badge.svg)
 
 Example usage:
 
@@ -32,7 +32,7 @@ pip install kitti_iterator
 
 To install the latest (might be unstable):
 ```bash
-pip install git+https://github.com/AdityaNG/kitti_iterator
+pip install git+https://github.com/PW22-SBN-01/kitti_iterator
 ```
 
 ## Dataset Structre
